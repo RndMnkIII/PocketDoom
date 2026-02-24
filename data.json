@@ -1,0 +1,29 @@
+{
+    "data": {
+        "magic": "APF_VER_1",
+        "data_slots": [
+            {
+                "id": 0,
+                "name": "WAD Data",
+                "required": true,
+                "parameters": 0,
+                "extensions": [
+                    "wad"
+                ],
+                "filename": "doom1.wad",
+                "deferload": true
+            },
+            {
+                "id": 1,
+                "name": "Doom Binary",
+                "required": true,
+                "parameters": 0,
+                "extensions": [
+                    "bin"
+                ],
+                "filename": "doom.bin",
+                "deferload": true
+            }
+        ]
+    }
+}
