@@ -537,38 +537,50 @@ void D_AddFile (char *file)
 
 //
 // IdentifyVersion
+// Set preliminary gamemode; actual detection happens after WAD is loaded.
 //
 void IdentifyVersion (void)
 {
     devparm = false;
 
-    // Manually select how to start
-#if 0
-    gamemode = commercial;
-    language = french;
-    D_AddFile ("doom2f.wad");
-#elif 0
-    gamemode = commercial;
-    D_AddFile ("doom2.wad");
-#elif 0
-    gamemode = commercial;
-    D_AddFile ("plutonia.wad");
-#elif 0
-    gamemode = commercial;
-    D_AddFile ("tnt.wad");
-#elif 0
-    gamemode = retail;
-    D_AddFile ("doomu.wad");
-#elif 1
-    gamemode = registered;
+    // Add WAD file — filename doesn't matter on Pocket, all .wad opens
+    // route to the preloaded WAD in SDRAM via libc/file.c
+    gamemode = registered;  // preliminary, refined in D_IdentifyGameMode
     D_AddFile ("doom.wad");
-#elif 0
-    gamemode = shareware;
-    D_AddFile ("doom1.wad");
-#else
-    printf("Game mode indeterminate.\n");
-    gamemode = indetermined;
-#endif
+}
+
+//
+// D_IdentifyGameMode
+// Auto-detect game mode from WAD lump contents.
+// Called after W_InitMultipleFiles so we can search lumps.
+//
+void D_IdentifyGameMode (void)
+{
+    if (W_CheckNumForName("MAP01") >= 0)
+    {
+        gamemode = commercial;
+        printf("D_IdentifyGameMode: Doom II (commercial)\n");
+    }
+    else if (W_CheckNumForName("E4M1") >= 0)
+    {
+        gamemode = retail;
+        printf("D_IdentifyGameMode: The Ultimate Doom (retail)\n");
+    }
+    else if (W_CheckNumForName("E3M1") >= 0)
+    {
+        gamemode = registered;
+        printf("D_IdentifyGameMode: Doom (registered)\n");
+    }
+    else if (W_CheckNumForName("E1M1") >= 0)
+    {
+        gamemode = shareware;
+        printf("D_IdentifyGameMode: Doom (shareware)\n");
+    }
+    else
+    {
+        gamemode = indetermined;
+        printf("D_IdentifyGameMode: unknown WAD\n");
+    }
 }
 
 
@@ -612,6 +624,9 @@ void D_DoomMain (void)
 
     printf ("W_Init: Init WADfiles.\n");
     W_InitMultipleFiles (wadfiles);
+
+    // Auto-detect game mode from WAD contents now that lumps are loaded
+    D_IdentifyGameMode ();
 
     printf ("M_Init: Init miscellaneous info.\n");
     M_Init ();

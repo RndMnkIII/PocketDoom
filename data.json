@@ -10,7 +10,7 @@
                 "extensions": [
                     "wad"
                 ],
-                "filename": "doom1.wad",
+                "filename": "",
                 "deferload": true
             },
             {

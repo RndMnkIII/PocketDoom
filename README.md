@@ -5,8 +5,21 @@ Doom (1993) running natively on the [Analogue Pocket](https://www.analogue.co/po
 ## Installation
 
 1. Copy the contents of the `release/` directory to your Analogue Pocket SD card root
-2. Copy `doom1.wad` (shareware) or `doom.wad` (registered) to `Assets/pocketdoom/common/` on the SD card
+2. Copy your WAD file to `Assets/pocketdoom/common/` on the SD card
 3. For link cable multiplayer, you **must** use a **GBC link cable** — GBA cables will NOT work
+
+### Supported WADs
+
+| WAD | Game | Notes |
+|-----|------|-------|
+| `doom1.wad` | Doom (shareware) | Free, episode 1 only |
+| `doom.wad` | Doom (registered) | Episodes 1-3 |
+| `doomu.wad` | The Ultimate Doom | Episodes 1-4 |
+| `doom2.wad` | Doom II: Hell on Earth | 32 levels |
+| `plutonia.wad` | Final Doom: Plutonia Experiment | 32 levels |
+| `tnt.wad` | Final Doom: TNT Evilution | 32 levels |
+
+The game mode is auto-detected from WAD contents. If multiple WAD files are present, the Pocket will show a file picker.
 
 See [Installation Layout](#installation-layout) below for the full SD card directory structure.
 
