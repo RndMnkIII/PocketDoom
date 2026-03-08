@@ -1,5 +1,5 @@
 #!/bin/bash
-# Package PocketQuake release into a zip file.
+# Package PocketDoom release into a zip file.
 # Usage: ./package_release.sh [VERSION]
 # If VERSION is provided, updates core.json before packaging.
 # If omitted, uses the version already in core.json.
@@ -24,9 +24,9 @@ else
     VERSION=$(python3 -c "import json; print(json.load(open('core.json'))['core']['metadata']['version'])")
 fi
 
-ZIP_NAME="PocketQuake-v${VERSION}.zip"
+ZIP_NAME="PocketDoom-v${VERSION}.zip"
 
-echo "Packaging PocketQuake v${VERSION}..."
+echo "Packaging PocketDoom v${VERSION}..."
 
 # Build the release directory
 make package

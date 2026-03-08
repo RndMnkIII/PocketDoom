@@ -1,5 +1,5 @@
 /*
- * VexRiscv generation for PocketQuake
+ * VexRiscv generation for PocketDoom
  *
  * RV32IMAFC with Wishbone bus, no MMU, no debug.
  *   I-cache: 32KB (2-way, 32B lines)
@@ -8,7 +8,7 @@
  * Usage:
  *   1. Clone VexRiscv: git clone https://github.com/SpinalHDL/VexRiscv.git
  *   2. Copy this file into VexRiscv/src/main/scala/vexriscv/demo/
- *   3. cd VexRiscv && sbt "runMain vexriscv.demo.GenPocketQuake"
+ *   3. cd VexRiscv && sbt "runMain vexriscv.demo.GenPocketDoom"
  *   4. Copy VexRiscv.v to VexRiscv_Full.v
  */
 
@@ -21,7 +21,7 @@ import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
 import spinal.core._
 import spinal.lib._
 
-object GenPocketQuake extends App {
+object GenPocketDoom extends App {
 
   def cpuConfig = VexRiscvConfig(
     plugins = List(

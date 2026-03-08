@@ -3,36 +3,42 @@
         "magic": "APF_VER_1",
         "data_slots": [
             {
+                "id": 9,
+                "name": "Game",
+                "required": true,
+                "parameters": "0x113",
+                "extensions": [
+                    "json"
+                ]
+            },
+            {
                 "id": 0,
-                "name": "WAD Data",
-                "required": true,
-                "parameters": 0,
-                "extensions": [
-                    "wad"
-                ],
-                "filename": "",
-                "deferload": true
-            },
-            {
-                "id": 1,
-                "name": "Doom Binary",
-                "required": true,
-                "parameters": 0,
-                "extensions": [
-                    "bin"
-                ],
-                "filename": "doom.bin",
-                "deferload": true
-            },
-            {
-                "id": 2,
-                "name": "PWAD (optional mod)",
+                "name": "IWAD",
                 "required": false,
                 "parameters": 0,
                 "extensions": [
                     "wad"
                 ],
-                "filename": "",
+                "deferload": true
+            },
+            {
+                "id": 1,
+                "name": "Doom Binary",
+                "required": false,
+                "parameters": 0,
+                "extensions": [
+                    "bin"
+                ],
+                "deferload": true
+            },
+            {
+                "id": 2,
+                "name": "PWAD",
+                "required": false,
+                "parameters": 0,
+                "extensions": [
+                    "wad"
+                ],
                 "deferload": true
             },
             {

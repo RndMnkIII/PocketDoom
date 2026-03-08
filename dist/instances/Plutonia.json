@@ -1,0 +1,19 @@
+{
+    "instance": {
+        "magic": "APF_VER_1",
+        "variant_select": {
+            "id": 666,
+            "select": false
+        },
+        "data_slots": [
+            {
+                "id": 0,
+                "filename": "plutonia/PLUTONIA.WAD"
+            },
+            {
+                "id": 1,
+                "filename": "doom.bin"
+            }
+        ]
+    }
+}

@@ -1,5 +1,5 @@
 /*
- * PocketQuake System Dashboard
+ * PocketDoom System Dashboard
  * SDRAM stress test + CPU instruction verification
  */
 
@@ -403,7 +403,7 @@ static void draw_dashboard(int sdram_progress, int psram_progress, uint32_t cycl
 
     /* Title */
     fill_rect(0, 0, FB_WIDTH, 14, COL_TITLE_BG);
-    draw_string_center(3, "PocketQuake System Dashboard", COL_HIGHLIGHT);
+    draw_string_center(3, "PocketDoom System Dashboard", COL_HIGHLIGHT);
 
     /* System info panel */
     draw_panel(5, 18, 150, 38, "System Info");

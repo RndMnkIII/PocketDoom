@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generate VexRiscv with custom cache sizes for PocketQuake
+# Generate VexRiscv with custom cache sizes for PocketDoom
 # Usage: ./generate.sh
 #
 # Prerequisites: java, sbt
@@ -16,12 +16,12 @@ if [ ! -d "$VEXRISCV_DIR" ]; then
 fi
 
 # Copy generation script into VexRiscv project
-cp "$SCRIPT_DIR/GenPocketQuake.scala" "$VEXRISCV_DIR/src/main/scala/vexriscv/demo/"
+cp "$SCRIPT_DIR/GenPocketDoom.scala" "$VEXRISCV_DIR/src/main/scala/vexriscv/demo/"
 
 # Generate
 echo "Generating VexRiscv (32KB I$ + 128KB D$)..."
 cd "$VEXRISCV_DIR"
-sbt "runMain vexriscv.demo.GenPocketQuake"
+sbt "runMain vexriscv.demo.GenPocketDoom"
 
 # Copy output
 if [ -f "$VEXRISCV_DIR/VexRiscv.v" ]; then

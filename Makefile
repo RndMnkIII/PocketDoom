@@ -12,6 +12,7 @@ OUTPUT_DIR = release
 RELEASE_CORE_DIR = $(OUTPUT_DIR)/Cores/$(CORE_NAME)
 RELEASE_PLATFORMS_DIR = $(OUTPUT_DIR)/Platforms
 RELEASE_ASSETS_DIR = $(OUTPUT_DIR)/Assets/pocketdoom/common
+RELEASE_INSTANCES_DIR = $(OUTPUT_DIR)/Assets/pocketdoom/$(CORE_NAME)
 
 # Files
 BITSTREAM_SOURCE = $(FPGA_DIR)/output_files/$(QUARTUS_PROJECT).rbf
@@ -55,7 +56,7 @@ firmware:
 	@echo "Firmware build complete"
 
 # Package release (uses existing bitstream)
-package: $(REVERSE_BITS) check-bitstream release-dirs copy-bitstream copy-firmware copy-json copy-platform copy-icon install-txt
+package: $(REVERSE_BITS) check-bitstream release-dirs copy-bitstream copy-firmware copy-json copy-platform copy-instances copy-icon install-txt
 	@echo ""
 	@echo "Build complete!"
 	@echo "Release package: $(OUTPUT_DIR)/"
@@ -77,6 +78,7 @@ release-dirs:
 	@mkdir -p $(RELEASE_CORE_DIR)
 	@mkdir -p $(RELEASE_PLATFORMS_DIR)/_images
 	@mkdir -p $(RELEASE_ASSETS_DIR)
+	@mkdir -p $(RELEASE_INSTANCES_DIR)
 
 # Build bit reversal tool
 $(REVERSE_BITS): reverse_bits.c
@@ -105,6 +107,11 @@ copy-platform:
 	@echo "Copying platform files..."
 	@cp dist/platforms/*.json $(RELEASE_PLATFORMS_DIR)/
 	@cp dist/platforms/_images/*.bin $(RELEASE_PLATFORMS_DIR)/_images/
+
+# Copy instance JSON files (game selector)
+copy-instances:
+	@echo "Copying instance files..."
+	@cp dist/instances/*.json $(RELEASE_INSTANCES_DIR)/
 
 # Copy core icon if it exists
 copy-icon:

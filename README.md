@@ -5,10 +5,12 @@ Doom (1993) running natively on the [Analogue Pocket](https://www.analogue.co/po
 ## Installation
 
 1. Copy the contents of the `release/` directory to your Analogue Pocket SD card root
-2. Copy your WAD file to `Assets/pocketdoom/common/` on the SD card
-3. For link cable multiplayer, you **must** use a **GB/GBC link cable** — GBA cables will NOT work
+2. Create a game directory under `Assets/pocketdoom/common/` (e.g. `doom/`, `doom2/`)
+3. Copy your IWAD file into that directory
+4. Create an instance JSON under `Assets/pocketdoom/ThinkElastic.PocketDoom/` (see [Adding Games & Mods](#adding-games--mods))
+5. For link cable multiplayer, you **must** use a **GB/GBC link cable** — GBA cables will NOT work
 
-### Supported WADs
+### Supported IWADs
 
 | WAD | Game | Notes |
 |-----|------|-------|
@@ -19,9 +21,9 @@ Doom (1993) running natively on the [Analogue Pocket](https://www.analogue.co/po
 | `plutonia.wad` | Final Doom: Plutonia Experiment | 32 levels |
 | `tnt.wad` | Final Doom: TNT Evilution | 32 levels |
 
-The game mode is auto-detected from WAD contents. If multiple WAD files are present, the Pocket will show a file picker.
+The game mode is auto-detected from WAD contents. The Pocket menu will list each instance JSON as a selectable entry.
 
-See [Installation Layout](#installation-layout) below for the full SD card directory structure.
+See [Installation Layout](#installation-layout) and [Adding Games & Mods](#adding-games--mods) below.
 
 ### Controls
 
@@ -264,18 +266,107 @@ SD Card Root/
 +-- Assets/
 |   +-- pocketdoom/
 |       +-- common/
-|           +-- doom.bin
-|           +-- doom1.wad        (shareware or doom.wad for registered)
+|       |   +-- doom.bin                 # Doom firmware (always required)
+|       |   +-- doom/
+|       |   |   +-- DOOM.WAD            # IWAD
+|       |   +-- doom2/
+|       |   |   +-- DOOM2.WAD           # IWAD
+|       |   |   +-- mymod.wad           # Optional PWAD (mod)
+|       |   +-- plutonia/
+|       |       +-- PLUTONIA.wad        # IWAD
+|       +-- ThinkElastic.PocketDoom/
+|           +-- Doom.json               # Instance: selectable from Pocket menu
+|           +-- Doom2.json
+|           +-- Doom2Modded.json        # Instance with PWAD
+|           +-- Plutonia.json
 +-- Cores/
 |   +-- ThinkElastic.PocketDoom/
 |       +-- bitstream.rbf_r
 |       +-- core.json
+|       +-- data.json
 |       +-- (other .json files)
 +-- Platforms/
     +-- _images/
     |   +-- pocketdoom.bin
     +-- pocketdoom.json
 ```
+
+## Adding Games & Mods
+
+Each game or mod combination is an **instance JSON** file placed under `Assets/pocketdoom/ThinkElastic.PocketDoom/`. The filename (without `.json`) is what appears in the Pocket menu. WAD files are stored under `Assets/pocketdoom/common/` in subdirectories.
+
+### Adding an IWAD (base game)
+
+1. Create a directory: `Assets/pocketdoom/common/doom2/`
+2. Copy your IWAD into it: `Assets/pocketdoom/common/doom2/DOOM2.WAD`
+3. Create `Assets/pocketdoom/ThinkElastic.PocketDoom/Doom2.json`:
+
+```json
+{
+    "instance": {
+        "magic": "APF_VER_1",
+        "variant_select": {
+            "id": 666,
+            "select": false
+        },
+        "data_slots": [
+            {
+                "id": 0,
+                "filename": "doom2/DOOM2.WAD"
+            },
+            {
+                "id": 1,
+                "filename": "doom.bin"
+            }
+        ]
+    }
+}
+```
+
+The `filename` path is relative to `Assets/pocketdoom/common/`. Data slot `0` is the IWAD, slot `1` is the Doom firmware binary.
+
+### Adding a PWAD (mod)
+
+To play a mod, copy the PWAD into the same directory as the IWAD it requires, then create an instance JSON that loads both:
+
+1. Copy the PWAD: `Assets/pocketdoom/common/doom2/btsx_e1.wad`
+2. Create `Assets/pocketdoom/ThinkElastic.PocketDoom/BTSXEpisode1.json`:
+
+```json
+{
+    "instance": {
+        "magic": "APF_VER_1",
+        "variant_select": {
+            "id": 666,
+            "select": false
+        },
+        "data_slots": [
+            {
+                "id": 0,
+                "filename": "doom2/DOOM2.WAD"
+            },
+            {
+                "id": 1,
+                "filename": "doom.bin"
+            },
+            {
+                "id": 2,
+                "filename": "doom2/btsx_e1.wad"
+            }
+        ]
+    }
+}
+```
+
+Data slot `2` is the PWAD (optional). You can create multiple instance JSONs that share the same IWAD but load different PWADs.
+
+### Data Slot Reference
+
+| Slot | Purpose | Required |
+|------|---------|----------|
+| `0`  | IWAD (base game WAD) | Yes |
+| `1`  | Doom firmware (`doom.bin`) | Yes |
+| `2`  | PWAD (mod WAD) | No |
 
 ## Project Structure
 
@@ -340,6 +431,7 @@ SD Card Root/
 
 ## Acknowledgments
 
+- [boogermann](https://github.com/boogermann/) — First implementation of Doom on RISC-V, which served as the foundation for this project
 - [id Software](https://github.com/id-Software/DOOM) — Original Doom source release
 - [jotego/jtopl](https://github.com/jotego/jtopl) — Hardware OPL2 synthesizer core
 - [SpinalHDL/VexiiRiscv](https://github.com/SpinalHDL/VexiiRiscv) — RISC-V CPU core
