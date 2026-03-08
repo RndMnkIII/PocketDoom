@@ -2,13 +2,15 @@
     "core": {
         "magic": "APF_VER_1",
         "metadata": {
-            "platform_ids": ["pocketdoom"],
+            "platform_ids": [
+                "pocketdoom"
+            ],
             "shortname": "PocketDoom",
             "description": "Doom on VexRiscv RISC-V CPU",
             "author": "ThinkElastic",
             "url": "",
-            "version": "0.1.0",
-            "date_release": "2026-02-23"
+            "version": "1.0.1",
+            "date_release": "2026-03-08"
         },
         "framework": {
             "target_product": "Analogue Pocket",

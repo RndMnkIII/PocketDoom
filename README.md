@@ -436,3 +436,4 @@ Data slot `2` is the PWAD (optional). You can create multiple instance JSONs tha
 - [jotego/jtopl](https://github.com/jotego/jtopl) — Hardware OPL2 synthesizer core
 - [SpinalHDL/VexiiRiscv](https://github.com/SpinalHDL/VexiiRiscv) — RISC-V CPU core
 - [Analogue](https://www.analogue.co/developer) — Pocket openFPGA development framework
+- [dyreschlock](https://github.com/dyreschlock) — Platform image
