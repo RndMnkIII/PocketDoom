@@ -17,6 +17,10 @@
             {
                 "id": 3,
                 "filename": "default.cfg"
+            },
+            {
+                "id": 10,
+                "filename": "Plutonia.sav"
             }
         ]
     }

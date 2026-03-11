@@ -354,7 +354,7 @@ load_genmidi(void)
     memcpy(genmidi, data + 8, GENMIDI_NUM_INSTRS * sizeof(genmidi_instr_t));
     Z_Free(data);
     genmidi_loaded = 1;
-    printf("I_InitMusic: loaded %d GENMIDI instruments\n", GENMIDI_NUM_INSTRS);
+    printf("I_InitMusic: loaded %d instruments\n", GENMIDI_NUM_INSTRS);
 }
 
 /* ============================================

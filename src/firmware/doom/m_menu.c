@@ -64,6 +64,8 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "sounds.h"
 
 #include "m_menu.h"
+#include "i_net.h"
+#include "d_net.h"
 
 
 
@@ -192,6 +194,9 @@ void M_EndGame(int choice);
 void M_ReadThis(int choice);
 void M_ReadThis2(int choice);
 void M_QuitDOOM(int choice);
+void M_LinkCable(int choice);
+void M_LinkSelect(int choice);
+void M_DrawLinkMenu(void);
 
 void M_ChangeMessages(int choice);
 void M_ChangeSensitivity(int choice);
@@ -233,6 +238,119 @@ void M_StopMessage(void);
 void M_ClearMenus (void);
 
 
+// Cached scale factor (fixed-point 8.8) derived from menu patch height.
+static int menu_scale_fp;   // 0 = not yet computed
+
+static void M_ComputeMenuScale(void)
+{
+    patch_t *ref = W_CacheLumpName("M_NGAME", PU_CACHE);
+    int ref_h = SHORT(ref->height);
+    int font_h = SHORT(hu_font[0]->height);
+    if (font_h < 1) font_h = 1;
+    menu_scale_fp = (ref_h << 8) / font_h;
+    if (menu_scale_fp < 256) menu_scale_fp = 256; // at least 1x
+    // Cap so scaled text never exceeds LINEHEIGHT (prevents overlap)
+    int max_scale = (LINEHEIGHT << 8) / font_h;
+    if (menu_scale_fp > max_scale) menu_scale_fp = max_scale;
+}
+
+// Draw a patch scaled by menu_scale_fp (fixed-point 8.8).
+// Horizontal: each source column is ceil(scale) wide, vertical: Bresenham row mapping.
+static void
+V_DrawPatchScaled
+( int           x,
+  int           y,
+  patch_t*      patch )
+{
+    int         col;
+    column_t*   column;
+    byte*       desttop;
+    byte*       dest;
+    byte*       source;
+    int         w;
+    int         scale = menu_scale_fp;
+    int         xstep = (scale + 128) >> 8; // rounded integer x scale
+
+    y -= (SHORT(patch->topoffset) * scale) >> 8;
+    x -= (SHORT(patch->leftoffset) * scale) >> 8;
+
+    w = SHORT(patch->width);
+
+    for ( col = 0 ; col<w ; col++, x+=xstep)
+    {
+        column = (column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+        desttop = screens[0] + y*SCREENWIDTH + x;
+
+        while (column->topdelta != 0xff )
+        {
+            source = (byte *)column + 3;
+            int src_h = column->length;
+            int dst_y0 = (column->topdelta * scale) >> 8;
+            int dst_y1 = ((column->topdelta + src_h) * scale) >> 8;
+            int dst_h = dst_y1 - dst_y0;
+
+            dest = desttop + dst_y0 * SCREENWIDTH;
+
+            for (int dy = 0; dy < dst_h; dy++)
+            {
+                int sy = (dy * src_h) / dst_h;
+                byte px = source[sy];
+                for (int dx = 0; dx < xstep; dx++)
+                    dest[dx] = px;
+                dest += SCREENWIDTH;
+            }
+            column = (column_t *)(  (byte *)column + column->length + 4 );
+        }
+    }
+}
+
+// Draw text scaled to match menu patch sizes.
+static void
+M_WriteTextScaled
+( int           x,
+  int           y,
+  char*         string)
+{
+    char*       ch;
+    int         c;
+    int         cx;
+    int         cy;
+    int         w;
+    int         scale = menu_scale_fp;
+    int         xstep = (scale + 128) >> 8;
+
+    if (!scale) { M_ComputeMenuScale(); scale = menu_scale_fp; xstep = (scale + 128) >> 8; }
+
+    ch = string;
+    cx = x;
+    cy = y;
+
+    while(1)
+    {
+        c = *ch++;
+        if (!c)
+            break;
+        if (c == '\n')
+        {
+            cx = x;
+            cy += (SHORT(hu_font[0]->height) * scale) >> 8;
+            continue;
+        }
+
+        c = toupper(c) - HU_FONTSTART;
+        if (c < 0 || c>= HU_FONTSIZE)
+        {
+            cx += 4 * xstep;
+            continue;
+        }
+
+        w = SHORT (hu_font[c]->width) * xstep;
+        if (cx+w > SCREENWIDTH)
+            break;
+        V_DrawPatchScaled(cx, cy, hu_font[c]);
+        cx+=w;
+    }
+}
 
 
 //
@@ -241,6 +359,7 @@ void M_ClearMenus (void);
 enum
 {
     newgame = 0,
+    multiplayer,
     options,
     loadgame,
     savegame,
@@ -251,6 +370,7 @@ enum
 menuitem_t MainMenu[]=
 {
     {1,"M_NGAME",M_NewGame,'n'},
+    {1,"",M_LinkCable,'m'},
     {1,"M_OPTION",M_Options,'o'},
     {1,"M_LOADG",M_LoadGame,'l'},
     {1,"M_SAVEG",M_SaveGame,'s'},
@@ -265,6 +385,35 @@ menu_t  MainDef =
     MainMenu,
     M_DrawMainMenu,
     97,64,
+    0
+};
+
+
+//
+// LINK CABLE MENU
+//
+enum
+{
+    link_host_dm = 0,
+    link_host_coop,
+    link_join,
+    link_end
+} link_e;
+
+menuitem_t LinkMenu[]=
+{
+    {1,"",M_LinkSelect,'d'},
+    {1,"",M_LinkSelect,'c'},
+    {1,"",M_LinkSelect,'j'}
+};
+
+menu_t  LinkDef =
+{
+    link_end,
+    &MainDef,
+    LinkMenu,
+    M_DrawLinkMenu,
+    54,100,
     0
 };
 
@@ -862,6 +1011,11 @@ void M_MusicVol(int choice)
 void M_DrawMainMenu(void)
 {
     V_DrawPatchDirect (94,2,0,W_CacheLumpName("M_DOOM",PU_CACHE));
+
+    // Draw "Multiplayer" scaled to match menu patch height.
+    // Use the same y as M_Drawer would for this item slot.
+    if (!menu_scale_fp) M_ComputeMenuScale();
+    M_WriteTextScaled(97, MainDef.y + multiplayer * LINEHEIGHT, "Multiplayer");
 }
 
 
@@ -943,6 +1097,142 @@ void M_Episode(int choice)
 
     epi = choice;
     M_SetupNextMenu(&NewDef);
+}
+
+
+
+//
+// M_LinkCable — Link cable multiplayer menu
+//
+
+// Externs from d_net.c needed for network setup
+extern doomdata_t*  netbuffer;
+extern boolean      nodeingame[];
+extern int          nettics[];
+extern boolean      remoteresend[];
+extern int          resendto[];
+extern int          resendcount[];
+extern int          nodeforplayer[];
+extern int          ticdup;
+extern int          maxsend;
+extern int          maketic;
+extern int          lastnettic;
+extern int          skiptics;
+extern void         D_ArbitrateNetStart(void);
+
+void M_DrawLinkMenu(void)
+{
+    M_WriteTextScaled(78, 74, "Multiplayer");
+
+    M_WriteTextScaled(LinkDef.x, LinkDef.y, "Host Deathmatch");
+    M_WriteTextScaled(LinkDef.x, LinkDef.y + LINEHEIGHT, "Host Co-op");
+    M_WriteTextScaled(LinkDef.x, LinkDef.y + 2 * LINEHEIGHT, "Join Game");
+}
+
+void M_LinkCable(int choice)
+{
+    if (!I_LinkHasHardware()) {
+        M_StartMessage("Link cable hardware\nnot detected.\n\npress a key.",
+                        NULL, false);
+        return;
+    }
+    if (netgame && !demoplayback) {
+        M_StartMessage("Already in a\nnetwork game.\n\npress a key.",
+                        NULL, false);
+        return;
+    }
+    M_SetupNextMenu(&LinkDef);
+}
+
+void M_LinkSelect(int choice)
+{
+    int is_host, dm;
+    int i;
+
+    switch (choice) {
+    case link_host_dm:   is_host = 1; dm = 1; break;
+    case link_host_coop: is_host = 1; dm = 0; break;
+    case link_join:      is_host = 0; dm = 0; break;
+    default: return;
+    }
+
+    // Draw connection status on screen
+    memset(screens[0], 0, SCREENWIDTH * SCREENHEIGHT);
+    M_WriteText(70, 80, is_host ? "Waiting for player..." : "Joining host...");
+    M_WriteText(108, 110, "B: cancel");
+    I_FinishUpdate();
+
+    // Blocking connection attempt
+    int result = I_LinkConnect(is_host);
+
+    if (result < 0) {
+        // Failed or cancelled — show briefly, return to menu
+        memset(screens[0], 0, SCREENWIDTH * SCREENHEIGHT);
+        M_WriteText(80, 90, "Connection failed.");
+        I_FinishUpdate();
+        {
+            int t0 = I_GetTime();
+            while (I_GetTime() - t0 < 70) ;
+        }
+        return;
+    }
+
+    // Connected — configure network state
+    I_LinkSetupNet(is_host, dm);
+    consoleplayer = displayplayer = doomcom->consoleplayer;
+    netbuffer = &doomcom->data;
+
+    // Show connected status
+    memset(screens[0], 0, SCREENWIDTH * SCREENHEIGHT);
+    M_WriteText(60, 90, is_host
+        ? "Connected as Player 1" : "Connected as Player 2");
+    I_FinishUpdate();
+    {
+        int t0 = I_GetTime();
+        while (I_GetTime() - t0 < 35) ;
+    }
+
+    // Reset network bookkeeping
+    for (i = 0; i < MAXNETNODES; i++) {
+        nodeingame[i] = false;
+        nettics[i] = 0;
+        remoteresend[i] = false;
+        resendto[i] = 0;
+        resendcount[i] = 0;
+    }
+    maketic = 0;
+    lastnettic = 0;
+    skiptics = 0;
+
+    // Show sync status
+    memset(screens[0], 0, SCREENWIDTH * SCREENHEIGHT);
+    M_WriteText(60, 90, "Syncing game settings...");
+    I_FinishUpdate();
+
+    // Host sends game settings; join receives them
+    if (is_host) {
+        startepisode = gameepisode > 0 ? gameepisode : 1;
+        startmap = 1;
+        startskill = gameskill;
+    }
+
+    D_ArbitrateNetStart();
+
+    // Finalize network state
+    ticdup = doomcom->ticdup;
+    maxsend = BACKUPTICS / (2 * ticdup) - 1;
+    if (maxsend < 1) maxsend = 1;
+
+    for (i = 0; i < doomcom->numplayers; i++)
+        playeringame[i] = true;
+    for (i = 0; i < doomcom->numnodes; i++)
+        nodeingame[i] = true;
+    nodeforplayer[0] = 0;
+    nodeforplayer[1] = 1;
+
+    // Start the game
+    G_DeferedInitNew(startskill, startepisode, startmap);
+    M_ClearMenus();
 }
 
 

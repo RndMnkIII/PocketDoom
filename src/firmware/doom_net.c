@@ -4,17 +4,15 @@
  * Uses link_mmio hardware peripheral for 2-player multiplayer over
  * the GBA link port.
  *
- * Menu flow:
- *   Main menu: SINGLE PLAYER / LINK CABLE
- *   Link submenu: HOST GAME / JOIN GAME
- *     HOST = master (drives SCK clock), player 0
- *     JOIN = slave (listens to SCK), player 1
- *
  * Protocol: simple framed unreliable packets with CRC16. Doom's own
  * d_net.c handles retransmission (NCMD_RETRANSMIT).
  *
  * Handshake: host sends HELLO, join responds with HELLO_ACK.
  * Then D_ArbitrateNetStart handles game settings exchange.
+ *
+ * The menu is handled in m_menu.c — this file provides the low-level
+ * link API (I_LinkHasHardware, I_LinkConnect, I_LinkSetupNet) and
+ * the Doom network interface (I_InitNetwork, I_NetCmd).
  */
 
 #include <stdlib.h>
@@ -25,22 +23,15 @@
 #include "d_net.h"
 #include "i_net.h"
 #include "i_system.h"
-#include "terminal.h"
 
 /* ============================================
- * Controller registers (direct read)
+ * Controller registers (direct read for cancel check)
  * ============================================ */
 
 #define SYS_BASE        0x40000000
 #define SYS_CONT1_KEY   (*(volatile uint32_t *)(SYS_BASE + 0x50))
 
-#define PAD_DPAD_UP     (1 << 0)
-#define PAD_DPAD_DOWN   (1 << 1)
-#define PAD_FACE_A      (1 << 4)
 #define PAD_FACE_B      (1 << 5)
-#define PAD_FACE_START  (1 << 15)
-
-#define PAD_ANY_NAV     (PAD_DPAD_UP | PAD_DPAD_DOWN | PAD_FACE_A | PAD_FACE_B | PAD_FACE_START)
 
 /* ============================================
  * Link MMIO registers (0x4D000000)
@@ -228,149 +219,16 @@ static void link_pump_rx(void)
 }
 
 /* ============================================
- * Terminal menu helpers
+ * Exported link cable API (called from m_menu.c)
  * ============================================ */
 
-#define MENU_ROW    10
-#define TITLE_ROW   (MENU_ROW - 3)
-
-static void draw_title(void)
+int I_LinkHasHardware(void)
 {
-    term_setpos(TITLE_ROW, 10);
-    term_puts("P O C K E T D O O M");
+    return (LINK_REG_ID == LINK_ID_MAGIC);
 }
 
-static uint32_t wait_button_press(void)
+int I_LinkConnect(int is_host)
 {
-    while (SYS_CONT1_KEY & PAD_ANY_NAV)
-        ;
-    uint32_t btn;
-    do {
-        btn = SYS_CONT1_KEY;
-    } while (!(btn & PAD_ANY_NAV));
-    for (volatile int i = 0; i < 500000; i++);
-    return btn;
-}
-
-static void wait_a_press(void)
-{
-    while (SYS_CONT1_KEY & PAD_FACE_A)
-        ;
-    while (!(SYS_CONT1_KEY & PAD_FACE_A))
-        ;
-    for (volatile int i = 0; i < 500000; i++);
-}
-
-/* ============================================
- * Main menu: SINGLE PLAYER / LINK CABLE
- * Returns 0=single, 1=link
- * ============================================ */
-
-static void main_menu_draw(int sel, int has_link)
-{
-    term_setpos(MENU_ROW, 11);
-    term_puts(sel == 0 ? "> SINGLE PLAYER  " : "  SINGLE PLAYER  ");
-
-    term_setpos(MENU_ROW + 2, 11);
-    if (has_link)
-        term_puts(sel == 1 ? "> LINK CABLE     " : "  LINK CABLE     ");
-    else
-        term_puts("  LINK CABLE (no hw)");
-
-    term_setpos(MENU_ROW + 5, 6);
-    term_puts("D-Pad: select   A: confirm");
-}
-
-static int show_main_menu(int has_link)
-{
-    int sel = 0;
-    term_clear();
-    draw_title();
-    main_menu_draw(sel, has_link);
-
-    while (1) {
-        uint32_t btn = wait_button_press();
-
-        if ((btn & PAD_DPAD_UP) && sel > 0) {
-            sel = 0;
-            main_menu_draw(sel, has_link);
-        } else if ((btn & PAD_DPAD_DOWN) && sel < 1 && has_link) {
-            sel = 1;
-            main_menu_draw(sel, has_link);
-        } else if (btn & (PAD_FACE_A | PAD_FACE_START)) {
-            if (sel == 1 && !has_link)
-                continue;
-            return sel;
-        } else if (btn & PAD_FACE_B) {
-            return 0;
-        }
-    }
-}
-
-/* ============================================
- * Link submenu: HOST / JOIN, with mode select
- * Returns: -1=back, 0=host+deathmatch, 1=host+coop, 2=join
- * ============================================ */
-
-static void link_menu_draw(int sel)
-{
-    term_setpos(MENU_ROW - 1, 14);
-    term_puts("LINK  CABLE");
-
-    term_setpos(MENU_ROW + 1, 11);
-    term_puts(sel == 0 ? "> HOST DEATHMATCH" : "  HOST DEATHMATCH");
-
-    term_setpos(MENU_ROW + 3, 11);
-    term_puts(sel == 1 ? "> HOST CO-OP     " : "  HOST CO-OP     ");
-
-    term_setpos(MENU_ROW + 5, 11);
-    term_puts(sel == 2 ? "> JOIN GAME      " : "  JOIN GAME      ");
-
-    term_setpos(MENU_ROW + 8, 6);
-    term_puts("D-Pad: select   A: confirm");
-    term_setpos(MENU_ROW + 9, 14);
-    term_puts("B: back");
-}
-
-static int show_link_menu(void)
-{
-    int sel = 0;
-    term_clear();
-    draw_title();
-    link_menu_draw(sel);
-
-    while (1) {
-        uint32_t btn = wait_button_press();
-
-        if ((btn & PAD_DPAD_UP) && sel > 0) {
-            sel--;
-            link_menu_draw(sel);
-        } else if ((btn & PAD_DPAD_DOWN) && sel < 2) {
-            sel++;
-            link_menu_draw(sel);
-        } else if (btn & (PAD_FACE_A | PAD_FACE_START)) {
-            return sel;
-        } else if (btn & PAD_FACE_B) {
-            return -1;
-        }
-    }
-}
-
-/* ============================================
- * Connection attempt
- * is_host: 1 = master (drives clock), 0 = slave (listens)
- * Returns: 1 on success, -1 on failure
- * ============================================ */
-
-static int link_attempt_connect(int is_host)
-{
-    term_clear();
-    draw_title();
-    term_setpos(MENU_ROW, 9);
-    term_puts(is_host ? "Waiting for player..." : "Joining host...");
-    term_setpos(MENU_ROW + 2, 16);
-    term_puts("B: cancel");
-
     link_hw_reset();
 
     if (is_host)
@@ -390,12 +248,10 @@ static int link_attempt_connect(int is_host)
         int now = I_GetTime();
 
         if (is_host) {
-            /* Host: send HELLO periodically, wait for HELLO_ACK */
             if (now - last_hello >= HELLO_INTERVAL) {
                 link_send_frame(PKT_HELLO, NULL, 0);
                 last_hello = now;
             }
-
             while (LINK_REG_RXCNT > 0) {
                 uint32_t w = LINK_REG_RX;
                 int ptype = link_rx_process(w);
@@ -405,13 +261,11 @@ static int link_attempt_connect(int is_host)
                 }
             }
         } else {
-            /* Join: wait for HELLO, respond with HELLO_ACK */
             while (LINK_REG_RXCNT > 0) {
                 uint32_t w = LINK_REG_RX;
                 int ptype = link_rx_process(w);
                 if (ptype == PKT_HELLO) {
                     link_send_frame(PKT_HELLO_ACK, NULL, 0);
-                    /* Send a few extra ACKs for reliability */
                     link_send_frame(PKT_HELLO_ACK, NULL, 0);
                     link_send_frame(PKT_HELLO_ACK, NULL, 0);
                     connected = 1;
@@ -424,32 +278,26 @@ static int link_attempt_connect(int is_host)
             break;
     }
 
-    if (!connected) {
-        term_setpos(MENU_ROW + 4, 11);
-        term_puts("Connection failed.");
-        term_setpos(MENU_ROW + 5, 11);
-        term_puts("Press A to retry");
-        wait_a_press();
+    if (!connected)
         goto fail;
-    }
 
     link_connected = 1;
-
-    term_setpos(MENU_ROW + 2, 10);
-    term_puts(is_host ? "Connected as Player 1" : "Connected as Player 2");
-    term_setpos(MENU_ROW + 4, 16);
-    term_puts("        ");  /* clear "B: cancel" leftover */
-
-    /* Brief pause so user can see */
-    t0 = I_GetTime();
-    while (I_GetTime() - t0 < 35)
-        ;
-
     return 1;
 
 fail:
     link_hw_reset();
     return -1;
+}
+
+void I_LinkSetupNet(int is_host, int dm)
+{
+    netgame = true;
+    deathmatch = dm;
+    nomonsters = dm;
+    doomcom->numplayers = 2;
+    doomcom->numnodes = 2;
+    doomcom->consoleplayer = is_host ? 0 : 1;
+    doomcom->deathmatch = dm;
 }
 
 /* ============================================
@@ -465,48 +313,6 @@ void I_InitNetwork(void)
     doomcom->deathmatch = false;
     doomcom->consoleplayer = 0;
     netgame = false;
-
-    int has_link = (LINK_REG_ID == LINK_ID_MAGIC);
-
-    while (1) {
-        int choice = show_main_menu(has_link);
-
-        if (choice == 0) {
-            term_clear();
-            term_setpos(12, 12);
-            term_puts("Starting game...");
-            return;
-        }
-
-        /* Link cable selected — show HOST/JOIN/mode submenu */
-        while (1) {
-            int role = show_link_menu();
-            /* -1=back, 0=host deathmatch, 1=host coop, 2=join */
-
-            if (role < 0)
-                break;  /* back to main menu */
-
-            int is_host = (role <= 1);
-            int dm = (role == 0) ? 1 : 0;  /* 1=deathmatch, 0=coop */
-
-            if (link_attempt_connect(is_host) > 0) {
-                netgame = true;
-                deathmatch = dm;  /* global — controls actual gameplay */
-                nomonsters = dm;  /* no monsters in deathmatch */
-                doomcom->numplayers = 2;
-                doomcom->numnodes = 2;
-                doomcom->consoleplayer = is_host ? 0 : 1;
-                doomcom->deathmatch = dm;
-
-                term_clear();
-                term_setpos(12, 8);
-                term_puts("Starting network game...");
-                return;
-            }
-
-            /* Connection failed — retry: loop back to link submenu */
-        }
-    }
 }
 
 void I_NetCmd(void)

@@ -16,10 +16,10 @@
 #define DS_LOG(...) do {} while(0)
 #endif
 
-/* Parameter buffer in SDRAM (placed at a known location) */
-/* We use the end of SDRAM test region to avoid conflicts */
-#define PARAM_BUFFER_ADDR   0x10F00000  /* CPU address for param struct */
-#define RESP_BUFFER_ADDR    0x10F01000  /* CPU address for response struct */
+/* Parameter buffer in SDRAM — placed at the end of the DMA bounce buffer
+ * area (0x10180000 + 512KB) so it stays outside the zone heap. */
+#define PARAM_BUFFER_ADDR   0x101F0000  /* CPU address for param struct */
+#define RESP_BUFFER_ADDR    0x101F1000  /* CPU address for response struct */
 
 /* Timeout for operations (in loop iterations) */
 /* 15 seconds at 133MHz with ~10 cycles/loop = 200M iterations */
@@ -44,6 +44,19 @@ int dataslot_wait_complete(void) {
             }
         }
         DS_LOG("wait: ACK cleared\n");
+    }
+
+    /* Also wait for DONE to clear from previous command.  If we don't,
+     * the DONE check below will return immediately with stale status. */
+    if (DS_STATUS & DS_STATUS_DONE) {
+        DS_LOG("wait: DONE still high, waiting to clear\n");
+        while (DS_STATUS & DS_STATUS_DONE) {
+            if (--timeout <= 0) {
+                DS_LOG("wait: timeout at DONE clear, t=%d\n", timeout);
+                return -3;
+            }
+        }
+        DS_LOG("wait: DONE cleared\n");
     }
 
     /* Wait for this command's ack */
@@ -74,7 +87,7 @@ int dataslot_wait_complete(void) {
 }
 
 __attribute__((section(".text.boot")))
-int dataslot_open_file(const char *filename, uint32_t flags, uint32_t size) {
+int dataslot_open_file(uint16_t slot_id, const char *filename, uint32_t flags, uint32_t size) {
     /* Build parameter struct in SDRAM */
     dataslot_open_param_t *param = (dataslot_open_param_t *)PARAM_BUFFER_ADDR;
 
@@ -86,7 +99,7 @@ int dataslot_open_file(const char *filename, uint32_t flags, uint32_t size) {
     param->size = size;
 
     /* Set up registers */
-    DS_SLOT_ID = 0;  /* Slot 0 for opened files */
+    DS_SLOT_ID = slot_id;
     DS_PARAM_ADDR = CPU_TO_BRIDGE_ADDR(PARAM_BUFFER_ADDR);
     DS_RESP_ADDR = CPU_TO_BRIDGE_ADDR(RESP_BUFFER_ADDR);
 

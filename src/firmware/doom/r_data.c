@@ -489,13 +489,6 @@ void R_InitTextures (void)
     temp1 = W_GetNumForName ("S_START");  // P_???????
     temp2 = W_GetNumForName ("S_END") - 1;
     temp3 = ((temp2-temp1+63)/64) + ((numtextures+63)/64);
-    printf("[");
-    for (i = 0; i < temp3; i++)
-        printf(" ");
-    printf("         ]");
-    for (i = 0; i < temp3; i++)
-        printf("\x8");
-    printf("\x8\x8\x8\x8\x8\x8\x8\x8\x8\x8");
 
     for (i=0 ; i<numtextures ; i++, directory++)
     {

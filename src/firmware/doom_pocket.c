@@ -97,9 +97,6 @@ void doom_main(void)
 {
     /* Initialize heap allocator (must happen before any malloc) */
     heap_init(_heap_start, _heap_end - _heap_start);
-    printf("doom_main: heap %x-%x (%d bytes)\n",
-           (unsigned)_heap_start, (unsigned)_heap_end,
-           (int)(_heap_end - _heap_start));
 
     D_DoomMain();  /* Never returns */
 }

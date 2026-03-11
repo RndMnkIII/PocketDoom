@@ -19,12 +19,6 @@ volatile unsigned int pd_dbg_info = 0;
 #define WAD_SLOT_ID     0
 #define DOOM_SLOT_ID    1
 
-/* Save slots — one 256KB slot per game instance, 14 total */
-#define SAV_SLOT_BASE   10
-#define SAV_INST_COUNT  14
-#define SAV_INST_SIZE   0x40000   /* 256KB per instance */
-#define SAV_REGION_BASE 0x13C00000
-
 /* External symbols from linker */
 extern char _doom_bss_start[], _doom_bss_end[];
 extern char _runtime_stack_top[];
@@ -79,43 +73,25 @@ static int load_slot(uint32_t slot_id, uint32_t slot_offset, void *dest, uint32_
 __attribute__((section(".text.boot")))
 int main(void) {
     term_init();
-    term_printf("PocketDoom Boot\n\n");
 
     /* Wait for APF bridge allcomplete before issuing dataslot commands */
-    term_printf("Waiting for bridge...\n");
     unsigned int start_wait = SYS_CYCLE_LO;
     while (!(SYS_STATUS & (1 << 1))) {
         if ((SYS_CYCLE_LO - start_wait) > 500000000)  /* 5s timeout */
             break;
     }
 
-    /* Diagnostic: show which instance save slots have data */
-    {
-        int found = 0;
-        for (int i = 0; i < SAV_INST_COUNT; i++) {
-            volatile uint32_t *uc = (volatile uint32_t *)SDRAM_UNCACHED(
-                SAV_REGION_BASE + (uint32_t)i * SAV_INST_SIZE);
-            /* Check first sub-save header (offset 0 within the 256KB slot) */
-            uint32_t sz = uc[0];
-            if (sz != 0 && sz != 0xFFFFFFFF && sz <= 0xA000)
-                found++;
-        }
-        term_printf("Save slots: %d/%d active\n", found, SAV_INST_COUNT);
-    }
+    /* Brief delay after bridge ready — deferload slots need a moment to
+     * finish file discovery before the first dataslot_read. */
+    for (volatile int i = 0; i < 1000000; i++) {}
 
     /* Load doom.bin from data slot directly into SDRAM (executes in place) */
     uint32_t doom_size = (uint32_t)_doom_copy_size;
-    term_printf("Loading doom.bin (%d bytes)...\n", doom_size);
     int rc = load_slot(DOOM_SLOT_ID, 0, _doom_load_addr, doom_size);
     if (rc < 0) {
         term_printf("FAILED to load doom.bin (rc=%d)\n", rc);
         while (1) {}
     }
-    term_printf("doom.bin loaded OK\n");
-
-    /* WAD is loaded on-demand via dataslot_read in libc/file.c.
-     * No preloading needed — Doom's zone allocator caches lumps. */
-    term_printf("WAD: on-demand (slot %d)\n", WAD_SLOT_ID);
 
     /* Flush I-cache (doom.bin loaded via DMA, may have stale cache lines) */
     flush_icache();
@@ -124,7 +100,6 @@ int main(void) {
     clear_doom_bss();
 
     /* Jump to Doom */
-    term_printf("Starting Doom...\n");
     switch_to_runtime_stack_and_call(doom_main, _runtime_stack_top);
 
     while (1) {}

@@ -633,7 +633,7 @@ void D_DoomMain (void)
     printf ("M_Init: Init miscellaneous info.\n");
     M_Init ();
 
-    printf ("R_Init: Init DOOM refresh daemon - ");
+    printf ("R_Init: Init DOOM.");
     R_Init ();
 
     printf ("\nP_Init: Init Playloop state.\n");
@@ -642,7 +642,7 @@ void D_DoomMain (void)
     printf ("I_Init: Setting up machine state.\n");
     I_Init ();
 
-    printf ("D_CheckNetGame: Checking network game status.\n");
+    printf ("D_CheckNetGame: Checking network.\n");
     D_CheckNetGame ();
 
     printf ("S_Init: Setting up sound.\n");

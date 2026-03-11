@@ -33,9 +33,13 @@
 
 // Called by D_DoomMain.
 
-
 void I_InitNetwork (void);
 void I_NetCmd (void);
+
+// Link cable API (Analogue Pocket)
+int  I_LinkHasHardware(void);           // 1 if LNK1 present
+int  I_LinkConnect(int is_host);        // 1=success, -1=fail/cancel
+void I_LinkSetupNet(int is_host, int dm); // configure doomcom for 2P
 
 
 #endif

@@ -380,9 +380,15 @@ void M_LoadDefaults (void)
         defaultfile = basedefault;
 
     // read the file in, overriding any set defaults
-    f = fopen (defaultfile, "r");
-    if (f)
     {
+        extern void term_printf(const char *fmt, ...);
+        f = fopen (defaultfile, "r");
+        if (!f)
+        {
+            term_printf("CFG: fopen FAILED\n");
+            while (1) {}  /* halt */
+        }
+        term_printf("CFG: fopen OK\n");
         while (!feof(f))
         {
             isstring = false;
@@ -415,6 +421,7 @@ void M_LoadDefaults (void)
         }
 
         fclose (f);
+        term_printf("CFG: fire=%d use=%d\n", key_fire, key_use);
     }
 }
 
