@@ -202,20 +202,271 @@ assign port_ir_rx_disable = 1;
 // bridge endianness
 assign bridge_endian_little = 1;
 
-// cart is unused, so set all level translators accordingly
-assign cart_tran_bank3 = 8'hzz;
-assign cart_tran_bank3_dir = 1'b0;
-assign cart_tran_bank2 = 8'hzz;
-assign cart_tran_bank2_dir = 1'b0;
-assign cart_tran_bank1 = 8'hzz;
-assign cart_tran_bank1_dir = 1'b0;
-assign cart_tran_bank0 = 4'hf;
-assign cart_tran_bank0_dir = 1'b1;
-assign cart_tran_pin30 = 1'b0;
-assign cart_tran_pin30_dir = 1'bz;
-assign cart_pin30_pwroff_reset = 1'b0;
-assign cart_tran_pin31 = 1'bz;
-assign cart_tran_pin31_dir = 1'b0;
+// ============================================================
+// Analogizer adapter (optional, directly controls cart port)
+// ============================================================
+
+//Pocket Menu settings
+reg [31:0] analogizer_settings;
+//wire [31:0] analogizer_settings_s;
+
+reg       analogizer_ena;
+reg [3:0] analogizer_video_type;
+reg [4:0] snac_game_cont_type /* synthesis keep */;
+reg [3:0] snac_cont_assignment /* synthesis keep */;
+
+//synch_3 #(.WIDTH(32)) sync_analogizer(analogizer_settings, analogizer_settings_s, clk_core_49152);
+
+  //create aditional switch to blank Pocket screen.
+  //assign video_rgb = (analogizer_video_type[3]) ? 24'h000000: video_rgb_reg;
+
+always @(*) begin
+  snac_game_cont_type   = analogizer_settings[4:0];
+  snac_cont_assignment  = analogizer_settings[9:6];
+  analogizer_video_type = analogizer_settings[13:10];
+  analogizer_ena        = analogizer_settings[15];
+end 
+
+
+
+    wire pocket_blank_screen = analogizer_settings[13] && analogizer_ena;
+
+    //create aditional switch to blank Pocket screen.
+    wire [23:0] video_rgb_doom;
+    //assign video_rgb_irem72 = (pocket_blank_screen && !analogizer_ena) ? 24'h000000: {core_r,core_g,core_b};
+    assign video_rgb_doom = (pocket_blank_screen) ? 24'h000000: vidout_rgb;
+
+    //switch between Analogizer SNAC and Pocket Controls for P1-P4 (P3,P4 when uses PCEngine Multitap)
+    wire [15:0] p1_btn, p2_btn;
+    wire [31:0] p1_joy, p2_joy;
+
+    reg [31:0] p1_controls, p2_controls;
+    reg [31:0] p1_joypad, p2_joypad;
+    reg [15:0] p1_trigger, p2_trigger;
+
+    always @(posedge clk_74a) begin
+        if((snac_game_cont_type == 5'h0) || (analogizer_ena == 1'b0)) begin //SNAC is disabled
+            p1_controls <= cont1_key;
+            p1_joypad   <= cont1_joy;
+            p1_trigger  <= cont1_trig;
+            p2_controls <= cont2_key;
+            p2_joypad   <= cont2_joy;
+            p2_trigger  <= cont2_trig;
+        end
+        else begin
+        case(snac_cont_assignment[1:0])
+        2'h0: begin  //SNAC P1 -> Pocket P1
+            p1_controls <= p1_btn;
+            p1_joypad   <= p1_joy;
+            p1_trigger  <= 15'h00;
+
+            p2_controls <= cont2_key;
+            p2_joypad   <= cont2_joy;
+            p2_trigger  <= cont2_trig;
+            end
+        2'h1: begin  //SNAC P1 -> Pocket P2
+            p1_controls <= cont1_key;
+            p1_joypad   <= cont1_joy;
+            p1_trigger  <= cont1_trig;
+
+            p2_controls <= p1_btn;
+            p2_joypad   <= p2_joy;
+            p2_trigger  <= 15'h00;
+            end
+        2'h2: begin //SNAC P1 -> Pocket P1, SNAC P2 -> Pocket P2
+            p1_controls <= p1_btn;
+            p1_joypad <= p1_joy;
+            p1_trigger <= 15'h00;
+            p2_controls <= p2_btn;
+            p2_joypad <= p2_joy;
+            p2_trigger <= 15'h00;
+            end
+        2'h3: begin //SNAC P1 -> Pocket P2, SNAC P2 -> Pocket P1
+            p1_controls <= p2_btn;
+            p1_joypad <= p2_joy;
+            p1_trigger <= 15'h00;
+            p2_controls <= p1_btn;
+            p2_joypad <= p1_joy;
+            p2_trigger <= 15'h00;
+            end
+        default: begin 
+            p1_controls <= cont1_key;
+            p1_joypad   <= cont1_joy;
+            p1_trigger  <= cont1_trig;
+
+            p2_controls <= cont2_key;
+            p2_joypad   <= cont2_joy;
+            p2_trigger  <= cont2_trig;
+            end
+        endcase
+        end
+    end
+
+    wire [15:0] p1_btn_CK, p2_btn_CK;
+    wire [31:0] p1_joy_CK, p2_joy_CK;
+    synch_3 #(
+    .WIDTH(16)
+    ) p1b_s (
+        p1_btn_CK,
+        p1_btn,
+        clk_74a
+    );
+
+    synch_3 #(
+        .WIDTH(16)
+    ) p2b_s (
+        p2_btn_CK,
+        p2_btn,
+        clk_74a
+    );
+
+    synch_3 #(
+    .WIDTH(32)
+    ) p3b_s (
+        p1_joy_CK,
+        p1_joy,
+        clk_74a
+    );
+        
+    synch_3 #(
+        .WIDTH(32)
+    ) p4b_s (
+        p2_joy_CK,
+        p2_joy,
+        clk_74a
+    );
+
+    reg [2:0] fx /* synthesis preserve */;
+    always @(posedge clk_core_49152) begin
+        case (analogizer_video_type)
+            4'd5, 4'd13:    begin fx <= 3'd0; end //SC  0%     1 SC 25%
+            4'd6, 4'd14:    begin fx <= 3'd2; end //SC  50%    3 SC 75%
+            4'd7, 4'd15:    begin fx <= 3'd4; end //hq2x
+            default:        begin fx <= 3'd0; end
+        endcase
+    end
+
+
+// Video Y/C Encoder settings
+// Follows the Mike Simone Y/C encoder settings:
+// https://github.com/MikeS11/MiSTerFPGA_YC_Encoder
+// SET PAL and NTSC TIMING and pass through status bits. ** YC must be enabled in the qsf file **
+wire [39:0] CHROMA_PHASE_INC;
+wire [26:0] COLORBURST_RANGE;
+wire [4:0] CHROMA_ADD;
+wire [4:0] CHROMA_MULT;
+wire PALFLAG;
+
+parameter NTSC_REF = 3.579545;   
+parameter PAL_REF = 4.43361875;
+
+// Parameters to be modifed
+parameter CLK_VIDEO_NTSC = 49.152; 
+parameter CLK_VIDEO_PAL  = 49.152; 
+
+localparam [39:0] NTSC_PHASE_INC = 40'd80073066196;  //print(round(3.579545 * 2**40 / 49.152)) 
+localparam [39:0] PAL_PHASE_INC =  40'd99178372574; //print(round(4.43361875 * 2**40 / 49.152)) 
+
+assign CHROMA_PHASE_INC = ((analogizer_video_type == 4'h4)|| (analogizer_video_type == 4'hC)) ? PAL_PHASE_INC : NTSC_PHASE_INC; 
+assign PALFLAG = (analogizer_video_type == 4'h4) || (analogizer_video_type == 4'hC); 
+
+
+// H/V offset
+reg [31:0] signed_hoff;
+reg [31:0] signed_voff;
+
+wire [5:0]	hoffset = signed_hoff[5:0];
+wire  [4:0]	voffset = signed_voff[4:0];
+wire video_ce_pix, half_ce_pix;
+
+jtframe_frac_cen #(.W(2)) pixel_cen
+(
+    .clk(clk_core_49152),
+    .n(10'd1),
+    .m(10'd4),
+    .cen({video_ce_pix,half_ce_pix})
+);
+wire HSync,VSync;
+jtframe_resync jtframe_resync
+(
+    .clk(clk_core_49152),
+    .pxl_cen(video_ce_pix),
+    .hs_in(crt_hs),
+    .vs_in(crt_vs),
+    .LVBL(crt_vblank),
+    .LHBL(crt_hblank),
+    .hoffset(hoffset), //5bits signed
+    .voffset(voffset), //5bits signed
+    .hs_out(HSync),
+    .vs_out(VSync)
+);
+
+wire crt_csync;
+wire crt_blankn;
+
+assign crt_csync = ~(HSync ^ VSync);
+assign crt_blankn   = ~(crt_hblank | crt_vblank);
+
+openFPGA_Pocket_Analogizer #(
+    .MASTER_CLK_FREQ(49_152_000),
+    .LINE_LENGTH(640)
+) analogizer (
+    .i_clk(clk_core_49152), //currently 50MHz
+    .i_rst(~reset_n),
+    .i_ena(analogizer_ena),
+    // Video interface (active but directly from our pipeline)
+    .video_clk(clk_core_12288), ////currently 12.25MHz
+    .analog_video_type(analogizer_video_type),       // 0 RGBS
+    .R(vidout_rgb[23:16]),
+    .G(vidout_rgb[15:8]),
+    .B(vidout_rgb[7:0]),
+    .Hblank(crt_hblank),
+    .Vblank(crt_vblank),
+    .BLANKn(crt_blankn),
+    .Hsync(HSync),
+    .Vsync(VSync),
+    .Csync(crt_csync ),
+    // Y/C encoder (unused)
+    .CHROMA_PHASE_INC(CHROMA_PHASE_INC),
+    .PALFLAG(PALFLAG),
+    // Scandoubler (unused)
+    .ce_pix(1'b1),
+    .scandoubler(1'b1),
+    .fx(fx), //0 disable, 1 scanlines 25%, 2 scanlines 50%, 3 scanlines 75%, 4 hq2x
+    // SNAC controller interface
+    .conf_AB(snac_game_cont_type >= 5'd16),  //0 conf. A(default), 1 conf. B (see graph above)
+    .game_cont_type(snac_game_cont_type),
+    .p1_btn_state(p1_btn_CK),
+    .p1_joy_state(p1_joy_CK),
+    .p2_btn_state(p2_btn_CK),
+    .p2_joy_state(p2_joy_CK),
+    .p3_btn_state(),
+    .p4_btn_state(),
+    // Rumble (unused)
+    .i_VIB_SW1(2'b0),
+    .i_VIB_DAT1(8'h0),
+    .i_VIB_SW2(2'b0),
+    .i_VIB_DAT2(8'h0),
+    // Status
+    .busy(),
+    // Cartridge port (directly driven by Analogizer)
+    .cart_tran_bank2(cart_tran_bank2),
+    .cart_tran_bank2_dir(cart_tran_bank2_dir),
+    .cart_tran_bank3(cart_tran_bank3),
+    .cart_tran_bank3_dir(cart_tran_bank3_dir),
+    .cart_tran_bank1(cart_tran_bank1),
+    .cart_tran_bank1_dir(cart_tran_bank1_dir),
+    .cart_tran_bank0(cart_tran_bank0),
+    .cart_tran_bank0_dir(cart_tran_bank0_dir),
+    .cart_tran_pin30(cart_tran_pin30),
+    .cart_tran_pin30_dir(cart_tran_pin30_dir),
+    .cart_pin30_pwroff_reset(cart_pin30_pwroff_reset),
+    .cart_tran_pin31(cart_tran_pin31),
+    .cart_tran_pin31_dir(cart_tran_pin31_dir),
+    // Debug
+    .DBG_TX(),
+    .o_stb()
+);
 
 // Link port directions
 assign port_tran_si = 1'bz;
@@ -465,16 +716,55 @@ wire        bridge_axi_rd_done;
 // ============================================================
 always @(*) begin
     casex(bridge_addr)
-    default: begin
-        bridge_rd_data <= 0;
-    end
-    32'b000000xx_xxxxxxxx_xxxxxxxx_xxxxxxxx: begin
-        bridge_rd_data <= bridge_rd_data_captured;
-    end
-    32'hF8xxxxxx: begin
-        bridge_rd_data <= cmd_bridge_rd_data;
-    end
+        default: begin
+            bridge_rd_data <= 0;
+        end
+        32'b000000xx_xxxxxxxx_xxxxxxxx_xxxxxxxx: begin
+            bridge_rd_data <= bridge_rd_data_captured;
+        end
+
+        32'hF7000000: begin 
+        //the byte order is inverted because the bridge_endian_little = 1
+        bridge_rd_data <= {analogizer_settings[7:0],analogizer_settings[15:8],analogizer_settings[23:16],analogizer_settings[31:24]};
+        end
+        32'hF7000004: begin 
+        //the byte order is inverted because the bridge_endian_little = 1
+        bridge_rd_data <= {signed_hoff[7:0],signed_hoff[15:8],signed_hoff[23:16],signed_hoff[31:24]}; //signed_hoff;
+        end
+        32'hF7000008: begin 
+        //the byte order is inverted because the bridge_endian_little = 1
+        bridge_rd_data <= {signed_voff[7:0],signed_voff[15:8],signed_voff[23:16],signed_voff[31:24]}; //signed_voff;
+        end
+
+        32'hF8xxxxxx: begin
+            bridge_rd_data <= cmd_bridge_rd_data;
+        end
     endcase
+end
+
+// Interact variable writes (SNAC adapter type from APF menu)
+always @(posedge clk_74a) begin
+    if (bridge_wr) begin
+        casex (bridge_addr)
+        32'hF7000000: analogizer_settings <= {
+        bridge_wr_data[7:0], 
+        bridge_wr_data[15:8], 
+        bridge_wr_data[23:16], 
+        bridge_wr_data[31:24]};
+
+        32'hF7000004: signed_hoff <= {
+        bridge_wr_data[7:0], 
+        bridge_wr_data[15:8], 
+        bridge_wr_data[23:16], 
+        bridge_wr_data[31:24]};
+
+        32'hF7000008: signed_voff <= {
+        bridge_wr_data[7:0], 
+        bridge_wr_data[15:8], 
+        bridge_wr_data[23:16], 
+        bridge_wr_data[31:24]};
+        endcase
+    end
 end
 
 // ============================================================
@@ -971,7 +1261,7 @@ core_bridge_cmd icb (
 // video generation
 assign video_rgb_clock = clk_core_12288;
 assign video_rgb_clock_90 = clk_core_12288_90deg;
-assign video_rgb = vidout_rgb;
+assign video_rgb = video_rgb_doom;
 assign video_de = vidout_de;
 assign video_skip = vidout_skip;
 assign video_vs = vidout_vs;
@@ -988,9 +1278,6 @@ assign video_hs = vidout_hs;
 
     reg [9:0]   x_count;
     reg [9:0]   y_count;
-
-    wire [9:0]  visible_x = x_count - VID_H_BPORCH;
-    wire [9:0]  visible_y = y_count - VID_V_BPORCH;
 
     reg [23:0]  vidout_rgb;
     reg         vidout_de, vidout_de_1;
@@ -1105,12 +1392,12 @@ assign video_hs = vidout_hs;
         // CDC inputs
         .dataslot_allcomplete(dataslot_allcomplete && bridge_wr_idle),
         .vsync(vidout_vs),
-        .cont1_key(cont1_key),
-        .cont1_joy(cont1_joy),
-        .cont1_trig(cont1_trig),
-        .cont2_key(cont2_key),
-        .cont2_joy(cont2_joy),
-        .cont2_trig(cont2_trig),
+        .cont1_key(p1_controls),
+        .cont1_joy(p1_joypad),
+        .cont1_trig(p1_trigger),
+        .cont2_key(p2_controls),
+        .cont2_joy(p2_joypad),
+        .cont2_trig(p2_trigger),
         .target_dataslot_ack(target_dataslot_ack),
         .target_dataslot_done(target_dataslot_done_safe),
         .target_dataslot_err(target_dataslot_err),
@@ -1346,7 +1633,7 @@ assign video_hs = vidout_hs;
         .clk(clk_core_12288),
         .clk_cpu(clk_cpu),
         .reset_n(reset_n),
-        .pixel_x(visible_x),
+        .pixel_x({visible_x[9],visible_x[9:1]}), //RndMnkIII: For CRT I doubled the x resolution
         .pixel_y(visible_y),
         .pixel_color(terminal_pixel_color),
         .mem_valid(term_mem_valid),
@@ -1379,8 +1666,8 @@ assign video_hs = vidout_hs;
     wire [31:0] video_burst_data;
     wire        video_burst_data_valid;
     wire        video_burst_data_done;
-
-    video_scanout_indexed scanout (
+    
+    video_CRT_scanout_indexed_BRAM  scanout (
         .clk_video(clk_core_12288),
         .reset_n(reset_n),
         .x_count(x_count),
@@ -1401,6 +1688,23 @@ assign video_hs = vidout_hs;
         .pal_data(cpu_pal_data)
     );
 
+        // ---  CRT 15.7kHz / 60Hz Parameters ---
+    localparam CRT_V_TOTAL  = CRT_V_SYNC + CRT_V_BPORCH + CRT_V_ACTIVE + CRT_V_FPORCH;
+    localparam CRT_V_SYNC   = 3;
+    localparam CRT_V_BPORCH = 15; //15;
+    localparam CRT_V_FPORCH = 4; //4;
+    localparam CRT_V_ACTIVE = 240;
+    localparam CRT_H_TOTAL  = CRT_H_SYNC + CRT_H_BPORCH + CRT_H_ACTIVE + CRT_H_FPORCH;
+    localparam CRT_H_SYNC   = 58;
+    localparam CRT_H_BPORCH = 62;
+    localparam CRT_H_FPORCH = 20;
+    localparam CRT_H_ACTIVE = 640;
+    reg crt_hs, crt_vs, crt_de;
+    reg crt_hblank, crt_vblank;
+
+    wire [9:0]  visible_x = x_count - CRT_H_SYNC - CRT_H_BPORCH;
+    wire [9:0]  visible_y = y_count - CRT_V_SYNC - CRT_V_BPORCH;
+
 always @(posedge clk_core_12288 or negedge reset_n) begin
 
     if(~reset_n) begin
@@ -1417,34 +1721,58 @@ always @(posedge clk_core_12288 or negedge reset_n) begin
         vidout_hs_1 <= vidout_hs;
         vidout_de_1 <= vidout_de;
 
+        // x and y counters
         x_count <= x_count + 1'b1;
-        if(x_count == VID_H_TOTAL-1) begin
+        if(x_count == CRT_H_TOTAL-1) begin
             x_count <= 0;
 
             y_count <= y_count + 1'b1;
-            if(y_count == VID_V_TOTAL-1) begin
+            if(y_count == CRT_V_TOTAL-1) begin
                 y_count <= 0;
             end
         end
 
+        // CRT Blank
+        crt_hblank <= x_count < (CRT_H_SYNC + CRT_H_BPORCH) || (x_count >= CRT_H_SYNC + CRT_H_BPORCH + CRT_H_ACTIVE);
+        crt_vblank <= y_count < (CRT_V_SYNC + CRT_V_BPORCH) || (y_count >= CRT_V_SYNC + CRT_V_BPORCH + CRT_V_ACTIVE);
+
+        // Generate CRT sync
+        // --- Generación de Syncs (Lógica Negativa) ---
+
+        crt_hs <= (x_count >= 0) && (x_count < CRT_H_SYNC);
+        crt_vs <= (y_count >= 0) && (y_count < CRT_V_SYNC);
+
+
+        // Generate Pocket sync
         if(x_count == 0 && y_count == 0) begin
+            // sync signal in back porch
+            // new frame
             vidout_vs <= 1;
-            frame_count <= frame_count + 1'b1;
         end
 
+        // we want HS to occur a bit after VS, not on the same cycle
         if(x_count == 3) begin
+            // sync signal in back porch
+            // new line
             vidout_hs <= 1;
         end
 
+        // inactive screen areas are black
         vidout_rgb <= 24'h0;
-        if(x_count >= VID_H_BPORCH && x_count < VID_H_ACTIVE+VID_H_BPORCH) begin
 
-            if(y_count >= VID_V_BPORCH && y_count < VID_V_ACTIVE+VID_V_BPORCH) begin
+        // generate active video, now accounts for CRT specific timings but making compatible with Analogue Pocket video also
+        if(x_count >= CRT_H_SYNC + CRT_H_BPORCH  && x_count < CRT_H_SYNC + CRT_H_BPORCH + CRT_H_ACTIVE) begin
+
+            if(y_count >= CRT_V_SYNC + CRT_V_BPORCH && y_count < CRT_V_SYNC + CRT_V_BPORCH + CRT_V_ACTIVE) begin
+                // data enable. this is the active region of the line
                 vidout_de <= 1;
 
+                // Display mode: 0=terminal overlay, 1=framebuffer only
                 if (display_mode) begin
+                    // Framebuffer only mode
                     vidout_rgb <= framebuffer_pixel_color;
                 end else begin
+                    // Terminal overlay mode - white text overlays framebuffer
                     if (terminal_pixel_color == 24'hFFFFFF)
                         vidout_rgb <= terminal_pixel_color;
                     else
@@ -1454,7 +1782,6 @@ always @(posedge clk_core_12288 or negedge reset_n) begin
         end
     end
 end
-
 
 //
 // Link MMIO peripheral
@@ -1524,6 +1851,7 @@ audio_output audio_out (
 
     wire    clk_core_12288;
     wire    clk_core_12288_90deg;
+    wire    clk_core_49152;
     wire    clk_cpu;
     wire    clk_ram_controller;
     wire    clk_ram_chip;
@@ -1541,7 +1869,7 @@ mf_pllbase mp1 (
     .outclk_0       ( clk_core_12288 ),
     .outclk_1       ( clk_core_12288_90deg ),
 
-    .outclk_2       ( ),
+    .outclk_2       ( clk_core_49152),
     .outclk_3       ( ),
     .outclk_4       ( ),
 
