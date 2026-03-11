@@ -222,20 +222,17 @@ void I_SetChannels(void)
     int j;
     int *steptablemid = steptable + 128;
 
-    /* Pitch step table: pow(2, i/64) * 65536
-     * Use integer approximation to avoid floating-point pow() */
-    for (i = -128; i < 128; i++)
-    {
-        /* Linear approximation: good enough for Doom's pitch range.
-         * True formula: 2^(i/64) * 65536
-         * At i=0: 65536, at i=64: 131072, at i=-64: 32768 */
-        if (i >= 0)
-            steptablemid[i] = 65536 + (i * 1024);  /* ~1.5% per step */
-        else
-            steptablemid[i] = 65536 + (i * 512);   /* Slower descent */
-    }
-    /* Fix center: exact 1:1 at normal pitch */
+    /* Pitch step table: 2^(i/64) * 65536
+     * Built iteratively: multiply by 2^(1/64) ≈ 66250/65536 per step.
+     * Key points are exact: 0→65536, ±64→2x/0.5x, ±128→4x/0.25x. */
     steptablemid[0] = 65536;
+    for (i = 1; i < 128; i++)
+        steptablemid[i] = (int)(((int64_t)steptablemid[i-1] * 66250) >> 16);
+    for (i = 1; i <= 128; i++)
+        steptablemid[-i] = (int)(((int64_t)steptablemid[-i+1] * 64830) >> 16);
+    /* Fix exact octave boundaries to avoid accumulated rounding */
+    steptablemid[64] = 131072;
+    steptablemid[-64] = 32768;
 
     /* Volume lookup table: converts unsigned 8-bit sample + volume
      * to signed 16-bit output. Sample 128 = silence. */
@@ -421,13 +418,35 @@ PD_FASTTEXT void I_SubmitSound(void)
         if (idx >= submit_mix_count - 1)
             idx = submit_mix_count - 2;
 
-        int l0 = mixbuffer[idx * 2];
-        int l1 = mixbuffer[(idx + 1) * 2];
-        int left = l0 + (((l1 - l0) * frac) >> 16);
+        /* Cubic Hermite interpolation (4-point) for smoother
+         * reconstruction — suppresses imaging artifacts from
+         * the 11 kHz → 48 kHz upsample.  Falls back to the
+         * boundary sample when idx is at the edges. */
+        int i0 = (idx > 0) ? idx - 1 : 0;
+        int i3 = (idx + 2 < submit_mix_count) ? idx + 2 : submit_mix_count - 1;
+        int t = frac;  /* 0..65535 = 0.0..1.0 in 16.16 */
 
-        int r0 = mixbuffer[idx * 2 + 1];
-        int r1 = mixbuffer[(idx + 1) * 2 + 1];
-        int right = r0 + (((r1 - r0) * frac) >> 16);
+        /* Left channel */
+        int y0 = mixbuffer[i0 * 2];
+        int y1 = mixbuffer[idx * 2];
+        int y2 = mixbuffer[(idx + 1) * 2];
+        int y3 = mixbuffer[i3 * 2];
+        int c0 = y1;
+        int c1 = (y2 - y0) >> 1;
+        int c2 = y0 - (5 * y1 >> 1) + (y2 << 1) - (y3 >> 1);
+        int c3 = ((y3 - y0) + 3 * (y1 - y2)) >> 1;
+        int left = c0 + (int)(((int64_t)t * (c1 + (int)(((int64_t)t * (c2 + (int)(((int64_t)t * c3) >> 16))) >> 16))) >> 16);
+
+        /* Right channel */
+        y0 = mixbuffer[i0 * 2 + 1];
+        y1 = mixbuffer[idx * 2 + 1];
+        y2 = mixbuffer[(idx + 1) * 2 + 1];
+        y3 = mixbuffer[i3 * 2 + 1];
+        c0 = y1;
+        c1 = (y2 - y0) >> 1;
+        c2 = y0 - (5 * y1 >> 1) + (y2 << 1) - (y3 >> 1);
+        c3 = ((y3 - y0) + 3 * (y1 - y2)) >> 1;
+        int right = c0 + (int)(((int64_t)t * (c1 + (int)(((int64_t)t * (c2 + (int)(((int64_t)t * c3) >> 16))) >> 16))) >> 16);
 
         AUDIO_SAMPLE = ((uint32_t)(uint16_t)left << 16) | (uint16_t)right;
 

@@ -6,7 +6,7 @@
                 "id": 9,
                 "name": "Game",
                 "required": true,
-                "parameters": "0x113",
+                "parameters": 275,
                 "extensions": [
                     "json"
                 ]
@@ -42,72 +42,6 @@
                 "deferload": true
             },
             {
-                "id": 20,
-                "name": "Save 0",
-                "required": false,
-                "parameters": "0x84",
-                "nonvolatile": true,
-                "extensions": ["sav"],
-                "filename": "doomsav0.dsg",
-                "address": "0x03C00000",
-                "size_maximum": "0x00020000"
-            },
-            {
-                "id": 21,
-                "name": "Save 1",
-                "required": false,
-                "parameters": "0x84",
-                "nonvolatile": true,
-                "extensions": ["sav"],
-                "filename": "doomsav1.dsg",
-                "address": "0x03C20000",
-                "size_maximum": "0x00020000"
-            },
-            {
-                "id": 22,
-                "name": "Save 2",
-                "required": false,
-                "parameters": "0x84",
-                "nonvolatile": true,
-                "extensions": ["sav"],
-                "filename": "doomsav2.dsg",
-                "address": "0x03C40000",
-                "size_maximum": "0x00020000"
-            },
-            {
-                "id": 23,
-                "name": "Save 3",
-                "required": false,
-                "parameters": "0x84",
-                "nonvolatile": true,
-                "extensions": ["sav"],
-                "filename": "doomsav3.dsg",
-                "address": "0x03C60000",
-                "size_maximum": "0x00020000"
-            },
-            {
-                "id": 24,
-                "name": "Save 4",
-                "required": false,
-                "parameters": "0x84",
-                "nonvolatile": true,
-                "extensions": ["sav"],
-                "filename": "doomsav4.dsg",
-                "address": "0x03C80000",
-                "size_maximum": "0x00020000"
-            },
-            {
-                "id": 25,
-                "name": "Save 5",
-                "required": false,
-                "parameters": "0x84",
-                "nonvolatile": true,
-                "extensions": ["sav"],
-                "filename": "doomsav5.dsg",
-                "address": "0x03CA0000",
-                "size_maximum": "0x00020000"
-            },
-            {
                 "id": 3,
                 "name": "Config",
                 "required": false,
@@ -116,6 +50,146 @@
                     "cfg"
                 ],
                 "deferload": true
+            },
+            {
+                "id": 10,
+                "name": "Doom Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["dsv"],
+                "address": "0x03C00000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 11,
+                "name": "Doom 2 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["d2s"],
+                "address": "0x03C40000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 12,
+                "name": "Ultimate Doom Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["uds"],
+                "address": "0x03C80000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 13,
+                "name": "Plutonia Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["pls"],
+                "address": "0x03CC0000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 14,
+                "name": "TNT Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["tns"],
+                "address": "0x03D00000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 15,
+                "name": "Game 6 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s06"],
+                "address": "0x03D40000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 16,
+                "name": "Game 7 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s07"],
+                "address": "0x03D80000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 17,
+                "name": "Game 8 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s08"],
+                "address": "0x03DC0000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 18,
+                "name": "Game 9 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s09"],
+                "address": "0x03E00000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 19,
+                "name": "Game 10 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s10"],
+                "address": "0x03E40000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 20,
+                "name": "Game 11 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s11"],
+                "address": "0x03E80000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 21,
+                "name": "Game 12 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s12"],
+                "address": "0x03EC0000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 22,
+                "name": "Game 13 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s13"],
+                "address": "0x03F00000",
+                "size_maximum": "0x00040000"
+            },
+            {
+                "id": 23,
+                "name": "Game 14 Saves",
+                "required": false,
+                "parameters": 36,
+                "nonvolatile": true,
+                "extensions": ["s14"],
+                "address": "0x03F40000",
+                "size_maximum": "0x00040000"
             }
         ]
     }

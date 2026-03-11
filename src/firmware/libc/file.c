@@ -46,7 +46,7 @@ static void free_file(FILE *f) {
 #define WAD_SLOT_ID      0    /* IWAD (required) */
 #define PWAD_SLOT_ID     2    /* PWAD mod (optional) */
 #define CFG_SLOT_ID      3    /* default.cfg (read-only) */
-#define CFG_MAX_SIZE     1024 /* Max config file size to load */
+#define CFG_MAX_SIZE     2048 /* Max config file size to load */
 
 /* Check if string ends with suffix (case-insensitive) */
 static int str_ends_with_ci(const char *str, const char *suffix) {
@@ -59,13 +59,6 @@ static int str_ends_with_ci(const char *str, const char *suffix) {
 /* Track how many WAD files have been opened (IWAD first, then PWAD) */
 static int wad_open_count = 0;
 
-/* IWAD file size — unique per game, used to tag saves per-instance.
- * Set when the IWAD is first opened. */
-static uint32_t iwad_fingerprint = 0;
-
-/* Game tag written right after save data (8 bytes).
- * Layout: [4-byte magic "PD\x01\x00"] [4-byte iwad_fingerprint] */
-#define SAV_TAG_MAGIC   0x00014450  /* "PD\x01\x00" */
 
 /* Map filename to data slot ID */
 static int filename_to_slot(const char *pathname) {
@@ -86,26 +79,68 @@ static int filename_to_slot(const char *pathname) {
  * the uncached alias, then persist to SD via dataslot_write().
  *
  * Layout (match data.json):
- *   Slots 20-25 = doomsav0.dsg through doomsav5.dsg (128KB each)
+ *   Slots 10-23 = per-instance save files (256KB each, unique extensions)
+ *   Each 256KB slot contains 6 sub-saves at 40KB (0xA000) offsets.
  *   Bridge base: 0x03C00000 = CPU 0x13C00000
  *   Config (default.cfg) is read-only from data slot 3.
+ *
+ * Instance slot mapping (by gamemode/gamemission):
+ *   0 = Doom (shareware/registered) → slot 10, ext "dsv"
+ *   1 = Doom 2                      → slot 11, ext "d2s"
+ *   2 = Ultimate Doom (retail)      → slot 12, ext "uds"
+ *   3 = Plutonia                    → slot 13, ext "pls"
+ *   4 = TNT                        → slot 14, ext "tns"
+ *   5-13 = reserved for future games (slots 15-23)
  * ============================================ */
 
 #define FILE_FLAG_WRITE     1
 
 #define SAV_REGION_BASE     0x13C00000   /* CPU address = bridge 0x03C00000 */
-#define SAV_SLOT_BASE       20           /* APF data slot ID for doomsav0 */
-#define SAV_SLOT_SIZE       (128 * 1024) /* 128KB per slot */
-#define SAV_MAX_SLOTS       6            /* doomsav0..doomsav5 */
-#define SAV_HEADER_SIZE     4            /* 4-byte size prefix */
-#define SAV_BUF_SIZE        (SAV_SLOT_SIZE)
+#define SAV_SLOT_BASE       10           /* APF data slot ID for first instance */
+#define SAV_INST_COUNT      14           /* Total instance slots (5 used + 9 reserved) */
+#define SAV_INST_SIZE       (256 * 1024) /* 256KB per instance slot */
+#define SAV_SUB_COUNT       6            /* Sub-saves per instance */
+#define SAV_SUB_SIZE        0xA000       /* 40KB per sub-save */
+#define SAV_HEADER_SIZE     4            /* 4-byte size prefix per sub-save */
+#define SAV_BUF_SIZE        (SAV_SUB_SIZE)
 
 /* Single shared buffer for save/config file operations.
  * Only one save file can be open for writing at a time. */
 static char sav_buf[SAV_BUF_SIZE] __attribute__((section(".bss")));
 
-/* Which save slot is currently open for writing (-1 = none) */
-static int sav_write_slot_num = -1;  /* 0-5 = save */
+/* Which sub-save and instance are currently open for writing (-1 = none) */
+static int sav_write_sub_idx = -1;   /* 0-5 = sub-save index */
+static int sav_write_inst_idx = -1;  /* 0-13 = instance index */
+
+/* GameMode_t enum values (from doomdef.h, avoid including Doom headers) */
+#define GM_SHAREWARE    0
+#define GM_REGISTERED   1
+#define GM_COMMERCIAL   2
+#define GM_RETAIL       3
+
+/* GameMission_t enum values */
+#define GMI_DOOM        0
+#define GMI_DOOM2       1
+#define GMI_PACK_TNT    2
+#define GMI_PACK_PLUT   3
+
+/* From doomstat.c — set by D_IdentifyGameMode after WAD is loaded */
+extern int gamemode;
+extern int gamemission;
+
+/* Map gamemode/gamemission to instance slot index (0-4).
+ * Returns 0 as fallback for unknown modes. */
+static int sav_instance_index(void) {
+    if (gamemode == GM_COMMERCIAL) {
+        switch (gamemission) {
+            case GMI_PACK_TNT:  return 4;
+            case GMI_PACK_PLUT: return 3;
+            default:            return 1;  /* Doom 2 */
+        }
+    }
+    if (gamemode == GM_RETAIL) return 2;  /* Ultimate Doom */
+    return 0;  /* shareware/registered/unknown → Doom */
+}
 
 /* Return pointer to basename (after last '/') */
 static const char *path_basename(const char *pathname) {
@@ -143,28 +178,20 @@ static int is_cfg_file(const char *pathname) {
     return 0;
 }
 
-/* Read save/config data from bridge auto-loaded SDRAM into sav_buf.
- * slot_num: 0-5 for saves, 6 for config.
+/* Read sub-save data from bridge auto-loaded SDRAM into sav_buf.
+ * inst_idx: instance index (0-13).
+ * sub_idx: sub-save index (0-5).
  * Returns saved_size on success, 0 on empty/corrupt. */
-static uint32_t sav_read_from_sdram(int slot_num) {
-    uint32_t slot_addr = SAV_REGION_BASE + (uint32_t)slot_num * SAV_SLOT_SIZE;
-    volatile uint32_t *uc = (volatile uint32_t *)SDRAM_UNCACHED(slot_addr);
+static uint32_t sav_read_from_sdram(int inst_idx, int sub_idx) {
+    uint32_t inst_addr = SAV_REGION_BASE + (uint32_t)inst_idx * SAV_INST_SIZE;
+    uint32_t sub_addr = inst_addr + (uint32_t)sub_idx * SAV_SUB_SIZE;
+    volatile uint32_t *uc = (volatile uint32_t *)SDRAM_UNCACHED(sub_addr);
     uint32_t saved_size = uc[0];  /* size header */
-    if (saved_size == 0 || saved_size > (SAV_SLOT_SIZE - SAV_HEADER_SIZE))
+    if (saved_size == 0 || saved_size > (SAV_SUB_SIZE - SAV_HEADER_SIZE))
         return 0;
 
-    /* Check game tag — right after save data (4-byte aligned).
-     * Skip saves from a different game/instance.
-     * Untagged saves (from older firmware) have no magic and are accepted. */
-    uint32_t tag_off = (SAV_HEADER_SIZE + saved_size + 3) & ~3u;
-    if (tag_off + 8 <= SAV_SLOT_SIZE) {
-        volatile uint32_t *tag = (volatile uint32_t *)SDRAM_UNCACHED(slot_addr + tag_off);
-        if (tag[0] == SAV_TAG_MAGIC && tag[1] != iwad_fingerprint)
-            return 0;
-    }
-
     memset(sav_buf, 0, SAV_BUF_SIZE);
-    volatile uint32_t *wsrc = (volatile uint32_t *)SDRAM_UNCACHED(slot_addr + SAV_HEADER_SIZE);
+    volatile uint32_t *wsrc = (volatile uint32_t *)SDRAM_UNCACHED(sub_addr + SAV_HEADER_SIZE);
     uint32_t *wdst = (uint32_t *)sav_buf;
     uint32_t words = saved_size >> 2;
     for (uint32_t i = 0; i < words; i++)
@@ -179,17 +206,19 @@ static uint32_t sav_read_from_sdram(int slot_num) {
     return saved_size;
 }
 
-/* Write sav_buf to SDRAM save region and persist to SD card.
- * slot_num: 0-5 for saves.
+/* Write sav_buf to SDRAM sub-save region and persist to SD card.
+ * inst_idx: instance index (0-13).
+ * sub_idx: sub-save index (0-5).
  * actual_size: number of bytes of data in sav_buf. */
-static void sav_persist(int slot_num, uint32_t actual_size) {
-    uint32_t slot_addr = SAV_REGION_BASE + (uint32_t)slot_num * SAV_SLOT_SIZE;
-    int ds_slot_id = SAV_SLOT_BASE + slot_num;
+static void sav_persist(int inst_idx, int sub_idx, uint32_t actual_size) {
+    uint32_t inst_addr = SAV_REGION_BASE + (uint32_t)inst_idx * SAV_INST_SIZE;
+    uint32_t sub_addr = inst_addr + (uint32_t)sub_idx * SAV_SUB_SIZE;
+    int ds_slot_id = SAV_SLOT_BASE + inst_idx;
 
     /* Write size header + data to SDRAM via uncached alias */
-    *(volatile uint32_t *)SDRAM_UNCACHED(slot_addr) = actual_size;
+    *(volatile uint32_t *)SDRAM_UNCACHED(sub_addr) = actual_size;
     {
-        volatile uint32_t *wdst = (volatile uint32_t *)SDRAM_UNCACHED(slot_addr + SAV_HEADER_SIZE);
+        volatile uint32_t *wdst = (volatile uint32_t *)SDRAM_UNCACHED(sub_addr + SAV_HEADER_SIZE);
         uint32_t *wsrc = (uint32_t *)sav_buf;
         uint32_t words = actual_size >> 2;
         for (uint32_t i = 0; i < words; i++)
@@ -203,18 +232,12 @@ static void sav_persist(int slot_num, uint32_t actual_size) {
         }
     }
 
-    /* Write game tag right after save data so saves are per-instance.
-     * Round up to 4-byte alignment for the uint32_t writes. */
-    uint32_t tag_off = (SAV_HEADER_SIZE + actual_size + 3) & ~3u;
-    volatile uint32_t *tag = (volatile uint32_t *)SDRAM_UNCACHED(slot_addr + tag_off);
-    tag[0] = SAV_TAG_MAGIC;
-    tag[1] = iwad_fingerprint;
-
     __asm__ volatile("fence");
 
-    /* Persist header + data + tag to SD card (no stale padding) */
-    uint32_t write_size = tag_off + 8;
-    dataslot_write(ds_slot_id, 0, (void *)slot_addr, write_size);
+    /* Persist entire instance slot to SD card (all 6 sub-saves).
+     * dataslot_write writes from SDRAM to SD — we write the whole 256KB
+     * slot so all sub-saves are saved atomically. */
+    dataslot_write(ds_slot_id, 0, (void *)inst_addr, SAV_INST_SIZE);
 }
 
 /* Read WAD header from a data slot to determine file size.
@@ -293,9 +316,6 @@ FILE *fopen(const char *pathname, const char *mode) {
             free_file(f);
             return NULL;
         }
-        /* Capture IWAD size as game fingerprint (first WAD opened) */
-        if (wad_open_count == 0)
-            iwad_fingerprint = f->size;
         wad_open_count++;
     } else {
         /* Get slot size from dataslot system */
@@ -314,9 +334,10 @@ int fclose(FILE *stream) {
     }
 
     /* Config/save write-back: persist to SDRAM + SD card */
-    if ((stream->flags & FILE_FLAG_WRITE) && stream->offset > 0 && sav_write_slot_num >= 0) {
-        sav_persist(sav_write_slot_num, stream->offset);
-        sav_write_slot_num = -1;
+    if ((stream->flags & FILE_FLAG_WRITE) && stream->offset > 0 && sav_write_sub_idx >= 0) {
+        sav_persist(sav_write_inst_idx, sav_write_sub_idx, stream->offset);
+        sav_write_sub_idx = -1;
+        sav_write_inst_idx = -1;
     }
 
     free_file(stream);
@@ -794,19 +815,21 @@ static void *fd_data[16] = {0};  /* Non-NULL = preloaded in SDRAM */
  * Separate from WAD fds to avoid array conflicts.
  * FD range: 100-106 for saves, 107 for config. */
 #define SAV_FD_BASE     100
-#define SAV_FD_CFG      (SAV_FD_BASE + SAV_MAX_SLOTS)
+#define SAV_FD_CFG      (SAV_FD_BASE + SAV_SUB_COUNT)
 
 static uint32_t sav_fd_offset = 0;
 static uint32_t sav_fd_size = 0;
 static int      sav_fd_used = 0;
 static int      sav_fd_writing = 0;
-static int      sav_fd_slot_num = -1;  /* 0-5 save, 6 config */
+static int      sav_fd_sub_idx = -1;   /* 0-5 sub-save index */
+static int      sav_fd_inst_idx = -1;  /* instance index */
 
 int open(const char *pathname, int flags, ...) {
     /* Save file (.dsg) handling */
     if (is_save_file(pathname)) {
-        int slot_num = sav_slot_from_name(pathname);
-        if (slot_num < 0) return -1;
+        int sub_idx = sav_slot_from_name(pathname);
+        if (sub_idx < 0) return -1;
+        int inst_idx = sav_instance_index();
 
         if (sav_fd_used) return -1;  /* Only one save fd at a time */
 
@@ -814,22 +837,25 @@ int open(const char *pathname, int flags, ...) {
             /* Write mode: prepare sav_buf for writing */
             memset(sav_buf, 0, SAV_BUF_SIZE);
             sav_fd_offset = 0;
-            sav_fd_size = SAV_SLOT_SIZE - SAV_HEADER_SIZE;
+            sav_fd_size = SAV_SUB_SIZE - SAV_HEADER_SIZE;
             sav_fd_writing = 1;
-            sav_fd_slot_num = slot_num;
-            sav_write_slot_num = slot_num;
+            sav_fd_sub_idx = sub_idx;
+            sav_fd_inst_idx = inst_idx;
+            sav_write_sub_idx = sub_idx;
+            sav_write_inst_idx = inst_idx;
             sav_fd_used = 1;
-            return SAV_FD_BASE + slot_num;
+            return SAV_FD_BASE + sub_idx;
         } else {
             /* Read mode: load from bridge SDRAM region */
-            uint32_t saved_size = sav_read_from_sdram(slot_num);
+            uint32_t saved_size = sav_read_from_sdram(inst_idx, sub_idx);
             if (saved_size == 0) return -1;  /* Empty slot */
             sav_fd_offset = 0;
             sav_fd_size = saved_size;
             sav_fd_writing = 0;
-            sav_fd_slot_num = slot_num;
+            sav_fd_sub_idx = sub_idx;
+            sav_fd_inst_idx = inst_idx;
             sav_fd_used = 1;
-            return SAV_FD_BASE + slot_num;
+            return SAV_FD_BASE + sub_idx;
         }
     }
 
@@ -843,9 +869,6 @@ int open(const char *pathname, int flags, ...) {
         fd_size[slot_id] = size;
         fd_offset[slot_id] = 0;
         fd_data[slot_id] = NULL;
-        /* Capture IWAD size as game fingerprint (first WAD opened) */
-        if (wad_open_count == 0)
-            iwad_fingerprint = size;
         fd_used[slot_id] = 1;
         wad_open_count++;
         return SLOT_TO_FD(slot_id);
@@ -865,13 +888,15 @@ int open(const char *pathname, int flags, ...) {
 int close(int fd) {
     /* Save file fd */
     if (fd >= SAV_FD_BASE && fd <= SAV_FD_CFG && sav_fd_used) {
-        if (sav_fd_writing && sav_fd_offset > 0 && sav_fd_slot_num >= 0) {
-            sav_persist(sav_fd_slot_num, sav_fd_offset);
-            sav_write_slot_num = -1;
+        if (sav_fd_writing && sav_fd_offset > 0 && sav_fd_sub_idx >= 0) {
+            sav_persist(sav_fd_inst_idx, sav_fd_sub_idx, sav_fd_offset);
+            sav_write_sub_idx = -1;
+            sav_write_inst_idx = -1;
         }
         sav_fd_used = 0;
         sav_fd_writing = 0;
-        sav_fd_slot_num = -1;
+        sav_fd_sub_idx = -1;
+        sav_fd_inst_idx = -1;
         return 0;
     }
 

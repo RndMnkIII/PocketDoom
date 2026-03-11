@@ -561,16 +561,28 @@ void IdentifyVersion (void)
 //
 void D_IdentifyGameMode (void)
 {
-    if (W_CheckNumForName("MAP01") >= 0)
+    if (W_CheckNumForName("MAP01") >= 0) {
         gamemode = commercial;
-    else if (W_CheckNumForName("E4M1") >= 0)
+        /* Distinguish Doom2 / TNT / Plutonia by unique lumps */
+        if (W_CheckNumForName("REDTNT2") >= 0)
+            gamemission = pack_tnt;
+        else if (W_CheckNumForName("CAMO1") >= 0)
+            gamemission = pack_plut;
+        else
+            gamemission = doom2;
+    } else if (W_CheckNumForName("E4M1") >= 0) {
         gamemode = retail;
-    else if (W_CheckNumForName("E3M1") >= 0)
+        gamemission = doom;
+    } else if (W_CheckNumForName("E3M1") >= 0) {
         gamemode = registered;
-    else if (W_CheckNumForName("E1M1") >= 0)
+        gamemission = doom;
+    } else if (W_CheckNumForName("E1M1") >= 0) {
         gamemode = shareware;
-    else
+        gamemission = doom;
+    } else {
         gamemode = indetermined;
+        gamemission = none;
+    }
 }
 
 

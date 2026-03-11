@@ -19,6 +19,12 @@ volatile unsigned int pd_dbg_info = 0;
 #define WAD_SLOT_ID     0
 #define DOOM_SLOT_ID    1
 
+/* Save slots — one 256KB slot per game instance, 14 total */
+#define SAV_SLOT_BASE   10
+#define SAV_INST_COUNT  14
+#define SAV_INST_SIZE   0x40000   /* 256KB per instance */
+#define SAV_REGION_BASE 0x13C00000
+
 /* External symbols from linker */
 extern char _doom_bss_start[], _doom_bss_end[];
 extern char _runtime_stack_top[];
@@ -81,6 +87,20 @@ int main(void) {
     while (!(SYS_STATUS & (1 << 1))) {
         if ((SYS_CYCLE_LO - start_wait) > 500000000)  /* 5s timeout */
             break;
+    }
+
+    /* Diagnostic: show which instance save slots have data */
+    {
+        int found = 0;
+        for (int i = 0; i < SAV_INST_COUNT; i++) {
+            volatile uint32_t *uc = (volatile uint32_t *)SDRAM_UNCACHED(
+                SAV_REGION_BASE + (uint32_t)i * SAV_INST_SIZE);
+            /* Check first sub-save header (offset 0 within the 256KB slot) */
+            uint32_t sz = uc[0];
+            if (sz != 0 && sz != 0xFFFFFFFF && sz <= 0xA000)
+                found++;
+        }
+        term_printf("Save slots: %d/%d active\n", found, SAV_INST_COUNT);
     }
 
     /* Load doom.bin from data slot directly into SDRAM (executes in place) */
