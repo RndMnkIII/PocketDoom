@@ -2,7 +2,7 @@
 # Builds bootloader (BRAM) + Doom engine (SDRAM)
 
 # Toolchain
-CROSS = riscv64-elf-
+CROSS = riscv64-unknown-elf-
 CC = $(CROSS)gcc
 AS = $(CROSS)gcc
 LD = $(CROSS)gcc

@@ -48,10 +48,13 @@ extern void I_SubmitSound(void);
 
 /* SDRAM framebuffer addresses (CPU byte addresses) */
 #define SDRAM_BASE          0x10000000
-#define FB0_ADDR            (SDRAM_BASE + 0x000000)  /* Framebuffer 0 */
-#define FB1_ADDR            (SDRAM_BASE + 0x100000)  /* Framebuffer 1 */
+#define FB_VOFFSET_LINES    20                        /* Used to center verticallya a 320x200 image buffer into a 320x240 screen buffer */
 #define FB_STRIDE           320                       /* Bytes per line */
 #define FB_LINES            240                       /* Total scanout lines */
+#define FB_VOFFSET          (FB_STRIDE * FB_VOFFSET_LINES)
+#define FB0_ADDR            (SDRAM_BASE + FB_VOFFSET + 0x000000)  /* Framebuffer 0 */
+#define FB1_ADDR            (SDRAM_BASE + FB_VOFFSET + 0x100000)  /* Framebuffer 1 */
+
 
 /* Convert SDRAM word address from register to CPU byte address */
 #define FB_REG_TO_CPU(reg)  (SDRAM_BASE + ((reg) << 1))
@@ -118,7 +121,7 @@ void I_InitGraphics(void)
     /* Point screens[0] at the current draw framebuffer (cached SDRAM).
      * Doom will render directly into it — no memcpy needed in I_FinishUpdate. */
     uint32_t draw_reg = SYS_FB_DRAW;
-    screens[0] = (byte *)FB_REG_TO_CPU(draw_reg);
+    screens[0] = (byte *)FB_REG_TO_CPU(draw_reg) + (20 * FB_STRIDE); //Center vertically
 
     /* Switch to framebuffer display mode */
     SYS_DISPLAY_MODE = 1;
