@@ -131,6 +131,7 @@ boolean                 menuactive;
 
 #define SKULLXOFF               -32
 #define LINEHEIGHT              16
+#define MENU_YOFF               ((SCREENHEIGHT - 200) / 2)
 
 extern boolean          sendpause;
 char                    savegamestrings[10][SAVESTRINGSIZE];
@@ -688,7 +689,7 @@ void M_DrawLoad(void)
 {
     int             i;
 
-    V_DrawPatchDirect (72,28,0,W_CacheLumpName("M_LOADG",PU_CACHE));
+    V_DrawPatchDirect (72,28+MENU_YOFF,0,W_CacheLumpName("M_LOADG",PU_CACHE));  /* title stays hardcoded */
     for (i = 0;i < load_end; i++)
     {
         M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i);
@@ -756,7 +757,7 @@ void M_DrawSave(void)
 {
     int             i;
 
-    V_DrawPatchDirect (72,28,0,W_CacheLumpName("M_SAVEG",PU_CACHE));
+    V_DrawPatchDirect (72,28+MENU_YOFF,0,W_CacheLumpName("M_SAVEG",PU_CACHE));
     for (i = 0;i < load_end; i++)
     {
         M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i);
@@ -910,12 +911,12 @@ void M_DrawReadThis1(void)
     switch ( gamemode )
     {
       case commercial:
-        V_DrawPatchDirect (0,0,0,W_CacheLumpName("HELP",PU_CACHE));
+        V_DrawPatchDirect (0,MENU_YOFF,0,W_CacheLumpName("HELP",PU_CACHE));
         break;
       case shareware:
       case registered:
       case retail:
-        V_DrawPatchDirect (0,0,0,W_CacheLumpName("HELP1",PU_CACHE));
+        V_DrawPatchDirect (0,MENU_YOFF,0,W_CacheLumpName("HELP1",PU_CACHE));
         break;
       default:
         break;
@@ -936,11 +937,11 @@ void M_DrawReadThis2(void)
       case retail:
       case commercial:
         // This hack keeps us from having to change menus.
-        V_DrawPatchDirect (0,0,0,W_CacheLumpName("CREDIT",PU_CACHE));
+        V_DrawPatchDirect (0,MENU_YOFF,0,W_CacheLumpName("CREDIT",PU_CACHE));
         break;
       case shareware:
       case registered:
-        V_DrawPatchDirect (0,0,0,W_CacheLumpName("HELP2",PU_CACHE));
+        V_DrawPatchDirect (0,MENU_YOFF,0,W_CacheLumpName("HELP2",PU_CACHE));
         break;
       default:
         break;
@@ -954,7 +955,7 @@ void M_DrawReadThis2(void)
 //
 void M_DrawSound(void)
 {
-    V_DrawPatchDirect (60,38,0,W_CacheLumpName("M_SVOL",PU_CACHE));
+    V_DrawPatchDirect (60,38+MENU_YOFF,0,W_CacheLumpName("M_SVOL",PU_CACHE));
 
     M_DrawThermo(SoundDef.x,SoundDef.y+LINEHEIGHT*(sfx_vol+1),
                  16,snd_SfxVolume);
@@ -1010,7 +1011,7 @@ void M_MusicVol(int choice)
 //
 void M_DrawMainMenu(void)
 {
-    V_DrawPatchDirect (94,2,0,W_CacheLumpName("M_DOOM",PU_CACHE));
+    V_DrawPatchDirect (94,2+MENU_YOFF,0,W_CacheLumpName("M_DOOM",PU_CACHE));
 
     // Draw "Multiplayer" scaled to match menu patch height.
     // Use the same y as M_Drawer would for this item slot.
@@ -1026,8 +1027,8 @@ void M_DrawMainMenu(void)
 //
 void M_DrawNewGame(void)
 {
-    V_DrawPatchDirect (96,14,0,W_CacheLumpName("M_NEWG",PU_CACHE));
-    V_DrawPatchDirect (54,38,0,W_CacheLumpName("M_SKILL",PU_CACHE));
+    V_DrawPatchDirect (96,14+MENU_YOFF,0,W_CacheLumpName("M_NEWG",PU_CACHE));
+    V_DrawPatchDirect (54,38+MENU_YOFF,0,W_CacheLumpName("M_SKILL",PU_CACHE));
 }
 
 void M_NewGame(int choice)
@@ -1052,7 +1053,7 @@ int     epi;
 
 void M_DrawEpisode(void)
 {
-    V_DrawPatchDirect (54,38,0,W_CacheLumpName("M_EPISOD",PU_CACHE));
+    V_DrawPatchDirect (54,38+MENU_YOFF,0,W_CacheLumpName("M_EPISOD",PU_CACHE));
 }
 
 void M_VerifyNightmare(int ch)
@@ -1282,7 +1283,7 @@ char    msgNames[2][9]          = {"M_MSGOFF","M_MSGON"};
 
 void M_DrawOptions(void)
 {
-    V_DrawPatchDirect (108,15,0,W_CacheLumpName("M_OPTTTL",PU_CACHE));
+    V_DrawPatchDirect (108,15+MENU_YOFF,0,W_CacheLumpName("M_OPTTTL",PU_CACHE));
 
     V_DrawPatchDirect (OptionsDef.x + 175,OptionsDef.y+LINEHEIGHT*detail,0,
                        W_CacheLumpName(detailNames[detailLevel],PU_CACHE));
@@ -2091,7 +2092,7 @@ void M_Drawer (void)
     if (messageToPrint)
     {
         start = 0;
-        y = 100 - M_StringHeight(messageString)/2;
+        y = (SCREENHEIGHT/2) - M_StringHeight(messageString)/2;
         while(*(messageString+start))
         {
             for (i = 0;i < strlen(messageString+start);i++)
@@ -2184,6 +2185,18 @@ void M_Ticker (void)
 //
 void M_Init (void)
 {
+    /* Offset all menu Y positions for taller screens */
+    MainDef.y += MENU_YOFF;
+    LinkDef.y += MENU_YOFF;
+    EpiDef.y += MENU_YOFF;
+    NewDef.y += MENU_YOFF;
+    OptionsDef.y += MENU_YOFF;
+    ReadDef1.y += MENU_YOFF;
+    ReadDef2.y += MENU_YOFF;
+    SoundDef.y += MENU_YOFF;
+    LoadDef.y += MENU_YOFF;
+    SaveDef.y += MENU_YOFF;
+
     currentMenu = &MainDef;
     menuactive = 0;
     itemOn = currentMenu->lastOn;

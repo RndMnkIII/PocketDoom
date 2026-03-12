@@ -1551,9 +1551,14 @@ void WI_loadData(void)
         strcpy(name,"INTERPIC");
     }
 
-    // background
+    // background — center 320x200 patch on 320x240 screen
     bg = W_CacheLumpName(name, PU_CACHE);
-    V_DrawPatch(0, 0, 1, bg);
+    {
+        int yoff = (SCREENHEIGHT - 200) / 2;
+        memset(screens[1], 0, SCREENWIDTH * yoff);
+        memset(screens[1] + SCREENWIDTH * (yoff + 200), 0, SCREENWIDTH * yoff);
+    }
+    V_DrawPatch(0, (SCREENHEIGHT-200)/2, 1, bg);
 
 
     // UNUSED unsigned char *pic = screens[1];

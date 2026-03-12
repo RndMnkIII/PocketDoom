@@ -218,6 +218,7 @@ V_DrawPatch
 
     y -= SHORT(patch->topoffset);
     x -= SHORT(patch->leftoffset);
+
 #ifdef RANGECHECK
     if (x<0
         ||x+SHORT(patch->width) >SCREENWIDTH
@@ -486,8 +487,8 @@ void V_Init (void)
 
     // stick these in low dos memory on PCs
 
-    base = I_AllocLow (SCREENWIDTH*SCREENHEIGHT*4);
+    base = I_AllocLow (SCREENWIDTH*SCREENHEIGHT*5);
 
-    for (i=0 ; i<4 ; i++)
+    for (i=0 ; i<5 ; i++)
         screens[i] = base + i*SCREENWIDTH*SCREENHEIGHT;
 }

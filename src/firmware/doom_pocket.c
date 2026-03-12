@@ -48,7 +48,7 @@ extern void I_SubmitSound(void);
 
 /* SDRAM framebuffer addresses (CPU byte addresses) */
 #define SDRAM_BASE          0x10000000
-#define FB_VOFFSET_LINES    20                        /* Used to center verticallya a 320x200 image buffer into a 320x240 screen buffer */
+#define FB_VOFFSET_LINES    0                         /* Full 320x240 — no vertical offset needed */
 #define FB_STRIDE           320                       /* Bytes per line */
 #define FB_LINES            240                       /* Total scanout lines */
 #define FB_VOFFSET          (FB_STRIDE * FB_VOFFSET_LINES)
@@ -123,7 +123,9 @@ void I_InitGraphics(void)
     uint32_t draw_reg = SYS_FB_DRAW;
     screens[0] = (byte *)FB_REG_TO_CPU(draw_reg) + FB_VOFFSET;
 
-    /* Switch to framebuffer display mode */
+    /* Clear terminal text and switch to framebuffer display mode */
+    extern void term_clear(void);
+    term_clear();
     SYS_DISPLAY_MODE = 1;
 }
 
@@ -160,19 +162,14 @@ PD_FASTTEXT void I_FinishUpdate(void)
         sink = flush[i];
     (void)sink;
 
-    /* Wait for any previous swap to complete before requesting a new one.
-     * Without this, the software buffer toggle can desync from hardware
-     * if rendering is faster than vsync (60 Hz). */
+    /* Wait for any previous swap to complete before requesting a new one. */
     while (SYS_FB_SWAP)
         ;
 
     /* Request buffer swap on next vsync */
     SYS_FB_SWAP = 1;
 
-    /* Read the actual draw buffer from hardware to stay in sync.
-     * After swap request, hardware still reports the pre-swap draw buffer
-     * (swap is pending until vsync), but since we just waited for the
-     * previous swap to complete, the toggle is guaranteed 1:1 with vsync. */
+    /* Toggle screens[0] between the two framebuffers */
     uint32_t cur_draw = (uint32_t)screens[0];
     screens[0] = (byte *)(cur_draw == FB0_ADDR ? FB1_ADDR : FB0_ADDR);
 }
