@@ -1118,6 +1118,9 @@ extern int          maxsend;
 extern int          maketic;
 extern int          lastnettic;
 extern int          skiptics;
+extern int          gametic;
+extern boolean      advancedemo;
+extern void         D_ResetNetSync(void);
 extern void         D_ArbitrateNetStart(void);
 
 void M_DrawLinkMenu(void)
@@ -1192,17 +1195,29 @@ void M_LinkSelect(int choice)
         while (I_GetTime() - t0 < 35) ;
     }
 
-    // Reset network bookkeeping
-    for (i = 0; i < MAXNETNODES; i++) {
-        nodeingame[i] = false;
-        nettics[i] = 0;
-        remoteresend[i] = false;
-        resendto[i] = 0;
-        resendcount[i] = 0;
-    }
+    // Exit demo state — HGetPacket returns false while demoplayback is true
+    demoplayback = false;
+    advancedemo = false;
+    usergame = true;
+
+    // Minimal pre-arbitrate reset so D_ArbitrateNetStart can work
     maketic = 0;
-    lastnettic = 0;
-    skiptics = 0;
+    gametic = 0;
+    netbuffer = &doomcom->data;
+
+    // Close menu NOW — before any blocking calls, so I_StartTic
+    // (called from CheckAbort) uses gameplay button mapping, not menu mapping
+    M_ClearMenus();
+    {
+        // We're called from inside D_ProcessEvents' for loop. After we return,
+        // the loop does eventtail = (eventtail+1)&63 before checking the exit
+        // condition. So set eventtail one BEFORE eventhead, so the increment
+        // lands exactly on eventhead and the loop exits cleanly.
+        extern int eventtail, eventhead;
+        extern int messageToPrint;
+        eventtail = (eventhead - 1) & (MAXEVENTS - 1);
+        messageToPrint = 0;
+    }
 
     // Show sync status
     memset(screens[0], 0, SCREENWIDTH * SCREENHEIGHT);
@@ -1218,6 +1233,10 @@ void M_LinkSelect(int choice)
 
     D_ArbitrateNetStart();
 
+    // Full reset of all timing and tic state after arbitration
+    // so both sides start the game loop from a clean slate
+    D_ResetNetSync();
+
     // Finalize network state
     ticdup = doomcom->ticdup;
     maxsend = BACKUPTICS / (2 * ticdup) - 1;
@@ -1230,9 +1249,26 @@ void M_LinkSelect(int choice)
     nodeforplayer[0] = 0;
     nodeforplayer[1] = 1;
 
-    // Start the game
-    G_DeferedInitNew(startskill, startepisode, startmap);
-    M_ClearMenus();
+    // Start the game — call G_InitNew directly instead of G_DeferedInitNew
+    // because G_DoNewGame resets netgame/deathmatch/playeringame/consoleplayer
+    G_InitNew(startskill, startepisode, startmap);
+    gameaction = ga_nothing;
+
+    // Restore net state that G_InitNew may have touched
+    netgame = true;
+    deathmatch = dm;
+    consoleplayer = displayplayer = doomcom->consoleplayer;
+
+    // Final cleanup: flush any events accumulated during init,
+    // ensure menu is closed.  Use (eventhead-1) so D_ProcessEvents'
+    // for-loop increment lands exactly on eventhead.
+    {
+        extern int eventtail, eventhead;
+        extern int messageToPrint;
+        eventtail = (eventhead - 1) & (MAXEVENTS - 1);
+        messageToPrint = 0;
+    }
+    menuactive = 0;
 }
 
 

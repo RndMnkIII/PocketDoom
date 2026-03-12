@@ -366,6 +366,35 @@ void GetPackets (void)
 //
 int      gametime;
 
+//
+// D_ResetNetSync
+// Reset all timing and tic state for a fresh network game start.
+// Called from M_LinkSelect after D_ArbitrateNetStart.
+//
+static int  oldentertics_reset;
+
+void D_ResetNetSync (void)
+{
+    int i;
+    int now = I_GetTime () / ticdup;
+
+    gametime = now;
+    oldentertics_reset = now;
+    gametic = 0;
+    maketic = 0;
+    lastnettic = 0;
+    skiptics = 0;
+    reboundpacket = false;
+
+    for (i = 0; i < MAXNETNODES; i++)
+    {
+        nettics[i] = 0;
+        remoteresend[i] = false;
+        resendto[i] = 0;
+        resendcount[i] = 0;
+    }
+}
+
 void NetUpdate (void)
 {
     int             nowtime;
@@ -637,6 +666,13 @@ void TryRunTics (void)
     int         availabletics;
     int         counts;
     int         numplaying;
+
+    // allow external reset of oldentertics
+    if (oldentertics_reset)
+    {
+        oldentertics = oldentertics_reset;
+        oldentertics_reset = 0;
+    }
 
     // get real tics
     entertic = I_GetTime ()/ticdup;
